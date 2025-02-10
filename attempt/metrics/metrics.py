@@ -3,11 +3,11 @@
 import numpy as np
 import scipy
 import math
-#import sklearn
+import sklearn
 import collections
 from logging import getLogger
 from .qa_utils import normalize_squad, qa_metrics
-#import sklearn.metrics
+import sklearn.metrics
 import functools
 
 ## My imports

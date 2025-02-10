@@ -4,10 +4,10 @@ import setuptools
 
 
 def setup_package():
-    long_description = "attempt"
+    long_description = "mto"
     setuptools.setup(
-        name='attempt',
-        description='ATTEMPT',
+        name='mto',
+        description='MTO',
         version='0.0.1',
         long_description=long_description,
         license='MIT License',

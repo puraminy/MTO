@@ -27,11 +27,11 @@ import shutil
 from pathlib import Path
 import glob
 from data import AutoPostProcessor
-#from third_party.models import T5Config, T5ForConditionalGeneration
+# from third_party.models import T5Config, T5ForConditionalGeneration
+from third_party.models import PTModel, AttentivePromptEmbedding 
 
 from transformers import AutoModelForSeq2SeqLM
 from peft import PromptTuningConfig, get_peft_model
-
 
 
 from dataclasses import dataclass, field
@@ -1447,14 +1447,12 @@ def train(**kwargs):
     else:
         anneal_rate = model_args.anneal_rate
     # Load a model config
-    config = T5Config.from_pretrained(
-        model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+    config = PromptTuningConfig(
+        task_type="SEQ_2_SEQ_LM",
+        num_virtual_tokens=10,  # Define number of soft prompt tokens
+        tokenizer_name_or_path=model_name_or_path
     )
 
-    mylogs.bp("config")
     config.train_task_adapters = adapter_args.train_task_adapters
     config.prefix_tuning = adapter_args.prefix_tuning
     config.dropout_rate = kwargs.get("dropout", 0.1)
@@ -1515,26 +1513,20 @@ def train(**kwargs):
     config.learn_source_prompts = learn_source_prompts
     config.learn_target_prompts = model_args.learn_target_prompts
 
+    
+    # Load the base model
+    base_model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
+    config.d_model = base_model.config.d_model
+
     adapter_args.freeze_model = kwargs.get("freeze_model", True)
     adapter_config = get_adapter_config(
         adapter_args, data_args, training_args, config)
 
-
-    # Initialize the model
-
-
-    # Load the base T5 model
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
-
-    # Define PEFT configuration
-    peft_config = PromptTuningConfig(
-        task_type="SEQ_2_SEQ_LM",
-        num_virtual_tokens=10,  # Define number of soft prompt tokens
-        tokenizer_name_or_path=model_name_or_path
-    )
-
     # Wrap model with PEFT
-    model = get_peft_model(model, peft_config)
+
+    # Initialize custom model with attentive prompt embedding
+    model = PTModel(base_model, config)
+    attn_pt = model.attentive_prompt_encoder
 
     #model = T5ForConditionalGeneration.from_pretrained(
     #    model_name_or_path,
@@ -1898,7 +1890,7 @@ def train(**kwargs):
         exp_info["taginfo"].append("len_encoders")
         tasks = data_args.task_name
         mylogs.bp("setenc")
-        model.encoder.set_encoders(prompt_encoders, 
+        attn_pt.set_encoders(prompt_encoders, 
             source_prompts, 
             source_prompt_length,
             target_prompt_length, tasks = tasks) 
