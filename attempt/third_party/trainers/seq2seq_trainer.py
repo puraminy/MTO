@@ -26,9 +26,9 @@ if version.parse(torch.__version__) >= version.parse("1.6"):
 
 class Seq2SeqTrainer(Seq2SeqTrainer, BaseTrainer):
     def __init__(self, train_dataset_sizes=None, shared=False, multiple_metrics=None, adapter_config=None, shuffle=False, save_checkpoint=False, *args, **kwargs):
-        #kwargs.pop("data_info")
-        #kwargs.pop("multi_task_compute_metrics")
-        #kwargs.pop("evaluation_metrics")
+        kwargs.pop("data_info")
+        kwargs.pop("multi_task_compute_metrics")
+        kwargs.pop("evaluation_metrics")
         super().__init__(*args, **kwargs)
         self.adapter_config = adapter_config
         self.multiple_metrics = multiple_metrics

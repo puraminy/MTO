@@ -5,18 +5,202 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
 from datasets import load_dataset
 from peft import PromptTuningConfig, get_peft_model, PeftModel
+import attempt.mylogs as mylogs
+from attempt.callbacks import WBCallback
+from torch import nn
+from torch.nn import CrossEntropyLoss
+from torch.utils.checkpoint import checkpoint
+import numpy as np
+
+class Anneal:
+    def __init__(self, temperature, anneal_dir, anneal_rate, anneal_min, anneal_type="exp"):
+        self.cur_step = 0
+        if anneal_dir == 1:
+            self.start_val = anneal_min
+            self.anneal_point = temperature
+        elif anneal_dir == -1:
+            self.start_val = temperature
+            self.anneal_point = anneal_min
+
+        self.cur_val = self.start_val
+        self.anneal_dir = anneal_dir
+        self.anneal_rate = anneal_rate
+        self.anneal_type = anneal_type
+
+    def __iter__(self):
+        return self
+
+    def anneal(self, i_step):
+        if self.anneal_dir == -1 and self.cur_val <= self.anneal_point:
+            return self.anneal_point
+        if self.anneal_dir == 1 and self.cur_val >= self.anneal_point:
+            return self.anneal_point
+        delta = self.anneal_dir * self.anneal_rate * i_step
+        if self.anneal_type == "exp":
+           exp_rate = np.exp(delta)
+           t = self.cur_val * exp_rate
+        else:
+           t = self.start_val + delta 
+        if self.anneal_dir == -1:
+            self.cur_val = max(t, self.anneal_point)
+        else:
+            self.cur_val = min(t, self.anneal_point)
+        return self.cur_val 
+
+    def __next__(self):
+        self.cur_step += 1 
+        value = self.anneal(self.cur_step)
+        return value
+
+def normalize_scores(scores, method="soft", 
+        sel_thresh=None, 
+        gen_thresh_min=None, 
+        gen_thresh_max=None, 
+        resample=False, is_training=False):
+
+    if method == "rb" or resample is True:
+        scores = RelaxedBernoulli(temperature=gen_thresh_min or 0.0001, 
+            logits=scores).rsample()  
+    if method == "rbsign": 
+        scores = RelaxedBernoulli(temperature=0.001, 
+            logits=scores).rsample()  
+        scores[scores < 0.5] = 0
+        scores[scores >= 0.5] = 1
+
+    if sel_thresh is not None:
+        if method == "srelu":
+            scores[scores < sel_thresh] = -100 #TODO check if it must be applied or not
+        elif method == "nothing":
+            scores[scores < sel_thresh] = 0
+
+    if gen_thresh_max is not None:
+        mylogs.bp("gmax")
+        scores[scores > gen_thresh_max] = gen_thresh_max
+
+    if gen_thresh_min is not None:
+        if method == "srelu":
+            scores[scores < gen_thresh_min] = -100
+        elif method == "nothing":
+            scores[scores < gen_thresh_min] = 0
+
+    mylogs.bp("col_sums")
+    col_sums = torch.sum((scores > 0)*scores, dim=0)
+    if method == "importance1":
+        scores = scores * col_sums
+    if method == "importance2":
+        scores = F.softmax(scores, -1)
+        scores = scores * col_sums
+    if method == "importance3":
+        scores = scores * col_sums
+        scores = F.softmax(scores, -1)
+    if method == "max":
+        max_values, _ = torch.max(scores, dim=2, keepdim=True)
+        mask = torch.eq(scores, max_values)
+        scores = torch.where(mask, torch.tensor(1.0), torch.tensor(0.0))
+    elif method == "zero":
+        scores[True] = 0
+    elif method == "one": # or len(torch.nonzero(scores)) == 0:
+        scores[True] = 1
+    elif method == "nothing":
+       pass 
+    elif method == "direct" or method == "soft" or method == "srelu":
+        if is_training:
+            scores=scores / scores.sum(dim=-1, keepdim=True) 
+            # Add a small positive constant to the scores
+            epsilon = 1e-8  # Adjust the value of epsilon as needed
+            scores += epsilon
+        scores = F.softmax(scores, -1)
+    elif method == "tanh":
+        scores = torch.tanh(scores)
+    elif method == "ssig":
+        shifted_values = scores + 1.5
+        scaled_values = 10 * (shifted_values / 3) - 3
+        scores = torch.sigmoid(scaled_values)  
+    elif method == "colsoft":
+        scores = F.softmax(scores, 0)
+    elif method == "sigmoid":
+        scores = torch.sigmoid(scores)  
+    elif method == "sign":
+        scores[scores <= 0] = 0
+        scores[scores > 0] = 1
+    elif method == "relu":
+        scores[scores <= 0] = 0
+    elif method == "spos":
+        scores = F.softmax(scores, -1)
+        scores[scores > 0.3] = 1
+    elif method == "sigmoid_relu":
+        ret_scores = torch.sigmoid(scores)  
+        ret_scores[scores <= 0] = 0
+        scores = ret_scores
+    elif method == "soft_relu":
+        ret_scores = F.softmax(scores, -1)
+        ret_scores[scores <= 0] = 0
+        scores = ret_scores
+    elif method == "norm":
+        scores=scores / scores.sum(dim=-1, keepdim=True) 
+    elif method == "normsoft":
+        scores=scores / scores.sum(dim=-1, keepdim=True) 
+        scores = F.softmax(scores, -1)
+    elif method == "minmax":
+        _min, _ = torch.min(scores, dim=-1, keepdim=True)
+        _max, _ = torch.max(scores, dim=-1, keepdim=True)
+        scores = (scores - _min) / (_max - _min)
+    
+
+    return scores
+
+def batched_topk(batch_size, scores, num_attend_to, sorted=False, threshold=None):
+    limit = scores.size(-1)
+    if threshold is None: 
+        k = num_attend_to
+        k = min(k, limit)
+        k = max(k, 1)
+        return torch.topk(scores, k, sorted=sorted)
+
+    # Initialize empty lists to store results
+    selected_scores_list = []
+    selected_indices_list = []
+    for i in range(batch_size):
+        k = num_attend_to
+        if threshold is not None: 
+            num_above = (scores[i] > threshold).sum().item()
+            k = min(num_attend_to, num_above)
+        k = min(k, limit)
+        k = max(k, 1)
+        sel_scores, sel_idx = torch.topk(scores[i], k, sorted=sorted)
+
+        # Append results to the lists
+        selected_scores_list.append(sel_scores.T)
+        selected_indices_list.append(sel_idx.T)
+
+    # Convert lists to tensors
+    selected_scores = pad_sequence(selected_scores_list, 
+            batch_first=True, padding_value=0.0).permute(0,2,1)
+    selected_indices = pad_sequence(selected_indices_list, 
+            batch_first=True, padding_value=0).permute(0,2,1)
+
+    return selected_scores, selected_indices
+
+def batched_index_select(inp, dim, index):
+    views = [inp.shape[0]] + [1 if i != dim else -1 for i in range(1, len(inp.shape))]
+    expanse = list(inp.shape)
+    expanse[0] = -1
+    expanse[dim] = -1
+    index = index.view(views).expand(expanse)
+    return torch.gather(inp, dim, index)
+
 
 # === Custom Attentive Prompt Embedding === #
-class AttentivePromptEmbedding(torch.nn.Module):
-    def __init__(self, config, embed_tokens=None, adapter_config=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, model_dim=768, attn_method="linear", shared_attn=False, attend_target=False, temperature=2000, learned_temperature=False):
-        super().__init__(config)
+class AttentivePromptEncoder(torch.nn.Module):
+    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, attn_method="linear", shared_attn=False, attend_target=False, temperature=2000, learned_temperature=False):
+        super().__init__()
 
         self.embed_tokens = embed_tokens
-        self.is_decoder = config.is_decoder
+        self.adapter_config = adapter_config
         ################# MyCode
         self.prompt_encoders = []
         self.use_private_prompts = False
-        self.embedding_dim = self.config.hidden_size
+        self.embedding_dim = model_dim = config.d_model
         # all prompt ids for all tasks
         self.target_prompt_ids = []
         self.common_prompt_ids = [] 
@@ -1193,13 +1377,14 @@ class AttentivePromptEmbedding(torch.nn.Module):
         return input_ids, att_mask
 
 class PTModel(PeftModel):
-    def __init__(self, base_model, config):
+    def __init__(self, base_model, config, adapter_config):
         super().__init__(base_model, config)
         self.prompt_tuning = config.prompt_tuning
         self.attn_prompt_tuning = config.attn_tuning
+        self.base_model = base_model
         self.attentive_prompt_encoder = None 
         if self.prompt_tuning or self.attn_prompt_tuning:
-            self.attentive_prompt_encoder = AttentivePromptEmbedding(config=config)
+            self.attentive_prompt_encoder = AttentivePromptEncoder(config, adapter_config)
         # self.base_model.dropout = nn.Dropout(config.dropout_rate)
 
     def forward(self, input_ids, 
@@ -1210,17 +1395,18 @@ class PTModel(PeftModel):
         task=None,
         **kwargs):
 
+        inputs_embeds = self.base_model.shared(input_ids) if inputs_embeds is None else inputs_embeds
+        mylogs.bp("fwd")
+        breakpoint()
         if self.prompt_tuning or self.attn_prompt_tuning:
             input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
                     input_ids, inputs_embeds, 
                     task_ids, 
                     task, att_mask = attention_mask)
 
-
-        input_embeddings = self.base_model.shared(input_ids) if inputs_embeds is None else inputs_embeds
-
         # inputs_embeds = torch.cat([attentive_embeddings, input_embeddings], dim=1)
-        return self.base_model(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask, **kwargs)
+        return self.base_model(inputs_embeds=inputs_embeds, 
+                            attention_mask=attention_mask, **kwargs)
 
 # === Setup for Training === #
 def setup_training():
@@ -1236,11 +1422,8 @@ def setup_training():
         tokenizer_name_or_path=model_name_or_path
     )
 
-    # Initialize AttentivePromptEmbedding
-    attn_prompt_embedding = AttentivePromptEmbedding(
-        model_dim=base_model.config.d_model,
-        num_virtual_tokens=peft_config.num_virtual_tokens,
-    )
+    # Initialize AttentivePromptEncoder
+    attn_prompt_embedding = AttentivePromptEncoder(peft_config)
 
     # Initialize custom model with attentive prompt embedding
     model = PTModel(base_model, peft_config, attn_prompt_embedding)

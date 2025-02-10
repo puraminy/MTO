@@ -9,8 +9,8 @@ class TaskDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
         assert len(np.unique(samples)) == 1
 
     def __call__(self, features):
-        tasks = [d.pop('task') for d in features]
+        # tasks = [d.pop('task') for d in features]
         # self.check_uniqueness(tasks)
         output = super().__call__(features)
-        output["task"] = tasks[0]
+        # output["task"] = tasks[0]
         return output

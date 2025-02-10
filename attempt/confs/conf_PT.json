@@ -3,6 +3,7 @@
   "save_path": "/home/ahmad/logs/ppp/cat--0-seed-123-1-50/P",
   "load_path": "/home/ahmad/pret",
   "is_debug": "",
+  "eval_strategy":"no",
   "trial": "1",
   "experiment": "%conf_PT",
   "version": "1",

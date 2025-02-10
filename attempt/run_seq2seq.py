@@ -28,7 +28,8 @@ from pathlib import Path
 import glob
 from data import AutoPostProcessor
 # from third_party.models import T5Config, T5ForConditionalGeneration
-from third_party.models import PTModel, AttentivePromptEmbedding 
+from third_party.models import PTModel, AttentivePromptEncoder 
+from transformers import Trainer #, TrainingArguments, DataCollatorForSeq2Seq
 
 from transformers import AutoModelForSeq2SeqLM
 from peft import PromptTuningConfig, get_peft_model
@@ -1449,7 +1450,7 @@ def train(**kwargs):
     # Load a model config
     config = PromptTuningConfig(
         task_type="SEQ_2_SEQ_LM",
-        num_virtual_tokens=10,  # Define number of soft prompt tokens
+        num_virtual_tokens=1,  # Define number of soft prompt tokens
         tokenizer_name_or_path=model_name_or_path
     )
 
@@ -1525,7 +1526,7 @@ def train(**kwargs):
     # Wrap model with PEFT
 
     # Initialize custom model with attentive prompt embedding
-    model = PTModel(base_model, config)
+    model = PTModel(base_model, config, adapter_config)
     attn_pt = model.attentive_prompt_encoder
 
     #model = T5ForConditionalGeneration.from_pretrained(
@@ -2190,7 +2191,7 @@ def train(**kwargs):
         if "learning_rate" in main_vars:
             target_prompt_learning_rate = learning_rate
         learning_rate = target_prompt_learning_rate
-        for encoder in model.prompt_encoders:
+        for encoder in attn_pt.prompt_encoders:
            para_list =[
                    p for n, p in encoder.named_parameters() if p.requires_grad and n != "A"]
            if para_list: 
@@ -2272,7 +2273,7 @@ def train(**kwargs):
     anneal_callback = AnnealCallback() 
     ptlr_callback = PTLearningRateCallback()
     callbacks = []
-    optimizer = AdamW(model.prompt_encoder.parameters(), lr=1e-4)  # Optimize only soft prompts
+    # optimizer = AdamW(model.prompt_encoder.parameters(), lr=1e-4)  # Optimize only soft prompts
     if model_args.attn_tuning:
        callbacks = [ptlr_callback, wb_callback, anneal_callback]
     if kwargs.use_optimizer: #TODO remove condition and the else part 
@@ -2292,7 +2293,7 @@ def train(**kwargs):
             shared=model_args.shared_attn,
             callbacks = callbacks, 
             shuffle = trainer_shuffle,
-            optimizers=optimizer #(optim, scheduler)
+            optimizers=(optim, scheduler)
         )
     else:
         trainer = Seq2SeqTrainer(
