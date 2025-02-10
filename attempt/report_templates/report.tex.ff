@@ -1,0 +1,57 @@
+\documentclass[]{article}
+\usepackage{booktabs} % for professional tables
+\usepackage{makecell}
+\usepackage{multirow,multicol}
+\usepackage{graphicx} 
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{datetime}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage[margin=1in, lmargin=1cm, rmargin=1cm]{geometry}
+
+%opening
+\begin{document}
+
+                    \begin{table*}[h]
+                        \label{table:show}
+                        \caption{ff:SLPI}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \hyperref[table:ff50@123@m-score]{50--123} & \hyperref[table:ff50@45@m-score]{50--45} & \hyperref[table:ff50@76@m-score]{50--76} & \hyperref[table:ff100@123@m-score]{100--123} & \hyperref[table:ff100@45@m-score]{100--45} & \hyperref[table:ff100@76@m-score]{100--76} & \hyperref[table:ff500@123@m-score]{500--123} & \hyperref[table:ff500@45@m-score]{500--45} & \hyperref[table:ff500@76@m-score]{500--76} \\
+\hline
+0) \hyperref[fig:P2-1]{P2} &  $ 76.2 $ & $ 77.0 $ & $ 65.4 $ & $  $ & $  $ & $  $ & $ 84.7 $ & $ 83.7 $ & $ 85.1 $ \\
+\hline 
+1) \hyperref[fig:PI-1]{PI} &  $ 76.2 $ & $ 77.0 $ & $ 65.4 $ & $ 80.5 $ & $ 65.2 $ & $ 77.0 $ & $ 84.7 $ & $ 83.7 $ & $ 85.1 $ \\
+\hline 
+2) \hyperref[fig:SILPI-1]{SILPI} &  $ 79.2 $ & $ 75.5 $ & $ 76.7 $ & $ 77.6 $ & $  $ & $ 63.5 $ & $ 83.5 $ & $ 83.6 $ & $ 84.4 $ \\
+\hline 
+3) \hyperref[fig:P]{P} &  $ 71.2 $ & $ 67.4 $ & $ 67.1 $ & $ 79.8 $ & $ 78.1 $ & $ 79.2 $ & $ 76.8 $ & $ 83.4 $ & $ 83.9 $ \\
+\hline 
+4) \hyperref[fig:SIL-1]{SIL} &  $ 79.5 $ & $ 78.3 $ & $ 78.1 $ & $ 80.1 $ & $ 80.1 $ & $  $ & $ 80.4 $ & $ 83.8 $ & $ 83.2 $ \\
+\hline 
+5) \hyperref[fig:SILP-1]{SILP} &  $ 79.3 $ & $ 71.6 $ & $ 78.1 $ & $ 81.2 $ & $ 81.3 $ & $  $ & $ 82.7 $ & $ 82.0 $ & $ 82.2 $ \\
+\hline 
+6) \hyperref[fig:SL-1]{SL} &  $ 70.3 $ & $ 64.3 $ & $ 75.6 $ & $ 56.2 $ & $ 77.1 $ & $ 64.2 $ & $ 45.5 $ & $ 82.1 $ & $ 82.1 $ \\
+\hline 
+7) \hyperref[fig:SLP-1]{SLP} &  $ 75.2 $ & $ 49.0 $ & $ 72.1 $ & $ 59.7 $ & $ 78.0 $ & $ 67.1 $ & $ 82.3 $ & $ 67.2 $ & $ 81.4 $ \\
+\hline 
+8) \hyperref[fig:SIP-1]{SIP} &  $ 72.2 $ & $ 65.3 $ & $ 65.3 $ & $ 73.0 $ & $ 58.4 $ & $  $ & $ 71.3 $ & $ 82.2 $ & $ 79.9 $ \\
+\hline 
+9) \hyperref[fig:SLPI-1]{SLPI} &  $ 73.7 $ & $ 77.2 $ & $ 71.5 $ & $ 81.4 $ & $ 80.1 $ & $ 65.8 $ & $ 78.7 $ & $ 83.4 $ & $ 79.2 $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+
+mytable
+myimage
+
+\input{images.tex}
+\end{document}

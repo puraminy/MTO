@@ -1,0 +1,955 @@
+#!usr/bin/sh
+#
+# test if the prompt var is not set
+export VISUAL=vim
+export EDITOR="$VISUAL"
+if [ -z "$PS1" ]; then
+    # prompt var is not set, so this is *not* an interactive shell
+    return
+fi
+alias copy="xclip -sel clip  "
+alias logg="vi ~/.local/share/NodCast/log_file.log"
+alias home="cd ~"
+alias fastai="cd ~/.fastai"
+alias downl="cd ~/downloads/"
+alias vil='vim -c "normal! '\''0"'
+alias tmuxa='tmux attach -t '
+alias tmuxr='tmux attach -t 0'
+alias vip="~/vip.sh"
+alias iran="~/iran.sh"
+alias int="~/int.sh"
+alias search2="grep -iRl "
+fsh() {
+find . -name "$2" | while read file; do 
+   echo "$file"
+   grep -iR -E --color "$1|$" $file | grep $1
+done
+}
+alias search-mfit="grep --exclude-dir=""data"" -iRl "
+alias bashrc="vi ~/.bashrc.old"
+alias vimrc="vi ~/.vimrc"
+alias vif="vim +normal!\'F"
+alias via="vim +normal!\'A"
+alias vib="vim +normal!\'B"
+alias findfile="find . -type f -name "
+alias data="cd ~/multifit/data/wiki/"
+alias notebooks="cd ~/multifit/notebooks/" 
+alias temp="cd ~/per"
+alias rebashrc="source ~/.bashrc"
+alias jupair="jupytext --set-formats ipynb,py"
+alias jusync="jupytext --sync"
+
+cdh() {
+	DIR=~/"$1"
+        if [ -d "$DIR" ]; then 
+           cd "$DIR"
+        else    
+           echo "$DIR not exists!"
+        fi      
+}
+
+edit-proj() {
+  vi ~/multifit/notebooks/ml.py
+}
+
+run-proj() {
+  cd ~/multifit/notebooks
+  ipython ml.py
+}
+
+alias rmfit=run-proj
+alias emfit=edit-proj
+alias sc=screen
+alias py=python3
+alias proj="cd ~/multifit"
+#export PATH="~/bin;$PATH"
+alias go="ping -c 2 google.com"
+alias dns="nmcli dev show | grep DNS"
+alias ju="jupyter notebook --no-browser --port=8889"
+alias py="python"
+alias ipy="ipython"
+alias juconv="jupyter nbconvert --to script"
+#alias python=/home/ahmad/miniconda3/bin/python3.7
+#ping -c 2 google.com
+#export FORCE_CUDA="1"
+#export PATH="/usr/local/cuda/bin:$PATH"
+#export CUDA_HOME="/usr/local/cuda"
+#export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+
+alias trimau="~/tools/trimau.sh"
+alias gp="gopen"
+alias open="gopen ."
+alias speak="~/simple-google-tts/simple_google_tts en"
+alias my_alias="vi ~/.bashrc_aliases"
+alias juconv="jupyter nbconvert --to script"
+alias mir="sshpass -p 123456 ssh mirzaie1390@hpc.vru.ac.ir"
+alias mirshare="sshfs -ononempty mirzaie1390@hpc.vru.ac.ir:/home/mirzaie1390/shared/ /home/ahmad/shared/"
+alias mirget="sshpass -p "123456" scp -r mirzaie1390@hpc.vru.ac.ir:/home/mirzaie1390/send /home/ahmad/get"
+alias tehget=~/tehget.sh
+alias mirsend=~/mirsend.sh
+alias tehsend=~/tehsend.sh
+tehsync_send() {
+   folder="${PWD#$HOME/}"
+   folder="${folder}/"
+   if [ $PWD == $HOME ]; then
+	echo "Warning!! you are at home directory"
+	return
+   fi
+   remote=/home/pouramini/${folder}
+   from="${PWD}/"
+   to="pouramini@172.16.143.8:${remote}"
+   if [ -z "$1" ]; then
+      inc="*.tsv"
+   else
+      inc="$1"
+   fi
+   exc="*"
+   if [ -n "$2" ]; then 
+      exc="$2" 
+      echo "syncinc from ${from} to ${to}  files $inc excluding $exc"
+      sshpass -p "nlp@server" rsync -P -ae "ssh" -zarv --exclude="$exc" --include="$inc" --exclude="*" "$from" "$to"
+   else
+      sshpass -p "nlp@server" rsync -P -ae "ssh" -zarv --include="$inc" --exclude="*" "$from" "$to"
+   fi
+}
+tehsync_rec() {
+   folder="${PWD#$HOME/}"
+   folder="${folder}/"
+   if [ $PWD == $HOME ]; then
+	echo "Warning!! you are at home directory"
+	return
+   fi
+   remote=/home/pouramini/${folder}
+   echo $remote
+   from="pouramini@172.16.143.8:${remote}"
+   to="${PWD}"
+   if [ -z "$1" ]; then
+      inc="*.tsv"
+   else
+      inc="$1"
+   fi
+   exc="*"
+   if [ -n "$2" ]; then 
+      exc="$2" 
+   fi
+   echo "from $remote --- $1 == $inc"
+   sshpass -p "nlp@server" rsync -P -ae "ssh" -zarv --include="*/" --include="$inc" --exclude="*" "$from" "$to"
+}
+plotsync() {
+	cd /home/ahmad/results/sel/plots
+	sshpass -p "nlp@server" rsync -ae "ssh" pouramini@172.16.143.8:/home/ahmad/results/sel/plots /home/ahmad/results/sel/plots
+	vim /home/ahmad/results/sel/plots
+}
+ausync() {
+	cd /home/ahmad/tehran/audio
+	sshpass -p "ahmad64" rsync -ae "ssh" pouramini@172.16.143.8:/home/ahmad/audio /home/ahmad/tehran
+	vim /home/ahmad/tehran/audio
+}
+alias conv="~/qa/conv.sh --input "
+alias tcon="nmcli con up id Tehran"
+alias tdis="nmcli con down id Tehran"
+alias tehran="sshpass -p nlp@server ssh pouramini@172.16.143.8"
+alias totehran="sshpass -p nlp@server ssh pouramini@172.16.143.8"
+alias tehranx="sshpass -p ahmad64 ssh -X pouramini@172.16.143.8"
+alias sib="nmcli con up id Sib"
+alias sdis="nmcli con down id Sib"
+tcc() {
+	nmcli con up id Tehran
+       	sshpass -p "nlp@server" ssh pouramini@172.16.143.8
+}
+ttc() {
+	nmcli con up id Tehran
+       	sshpass -p "nlp@server" ssh -Y pouramini@172.16.143.7
+}
+rd() {
+  if [ -z "$1" ]; then
+    b=1
+  else
+    b=$1
+  fi
+  cd $(ls -td ./*/ | head -$b | tail -1)
+}
+alias tcn="nmcli con up id Tehran &&  sshpass -p ahmad64 ssh -N -f -L localhost:8000:localhost:8889 pouramini@172.16.143.8 &&  sshpass -p ahmad64 ssh pouramini@172.16.143.8"
+alias off="sudo shutdown now"
+alias dns="nmcli dev show | grep DNS"
+
+tehn() {
+	lsof -ti:8000 | xargs kill -9
+	sshpass -p ahmad64 ssh -N -f -L localhost:8000:localhost:8889 pouramini@172.16.143.8
+}
+
+tenb() {
+	lsof -ti:6006 | xargs kill -9
+	sshpass -p nlp@server ssh -N -f -L localhost:6006:localhost:6006 pouramini@172.16.143.8
+}
+
+tenb2() {
+	lsof -ti:8008 | xargs kill -9
+	sshpass -p ahmad64 ssh -N -f -L localhost:8008:localhost:8008 pouramini@172.16.143.8
+}
+fehn() {
+	lsof -ti:5000 | xargs kill -9
+	sshpass -p ahmad64 ssh -N -f -L localhost:5000:localhost:5000 pouramini@172.16.143.8
+}
+alias tehint='sudo sshpass -p ahmad64 ssh -N -f -L localhost:8001:localhost:80 pouramini@172.16.143.8'
+alias reloud_services="systemctl daemon-reload"
+alias lst_tmux="tmux ls"
+alias nbs="cd ~/nbs"
+alias ctl="systemctl"
+alias systemd="cd /etc/systemd/system"
+alias recs="cd /home/ahmad/recs/"
+alias suvi="sudo vi"
+alias reb="sudo reboot"
+
+tehdir() {
+  sshfs -o follow_symlinks pouramini@172.16.143.8:/home/pouramini/$1 tehran
+}
+
+nw() {
+        tmux new -s "$1"
+}
+rtt() {
+        tmux attach -t "$1"
+}
+
+alias b1="cd .."
+alias b2="cd ../.."
+alias b3="cd ../../.."
+
+restart() {
+	ser=$ser
+	if [[ $1 == *.service ]]; then
+	  ser="$1"
+	fi
+        systemctl restart $ser
+}
+start() {
+	ser=$ser
+	if [[ $1 == *.service ]]; then
+	  ser="$1"
+	fi
+        systemctl start $ser
+}
+stop() {
+	ser=$ser
+	if [[ $1 == *.service ]]; then
+	  ser="$1"
+	fi
+        systemctl stop $ser
+}
+status() {
+	ser=$ser
+	if [[ $1 == *.service ]]; then
+	  ser="$1"
+	fi
+        systemctl -l --no-pager status $ser
+}
+ser_enable() {
+	ser=$ser
+	if [[ $1 == *.service ]]; then
+	  ser="$1"
+	fi
+        systemctl enable $ser
+}
+ser_disable() {
+	ser=$ser
+	if [[ $1 == *.service ]]; then
+	  ser="$1"
+	fi
+        systemctl disable $ser
+}
+alias gcommit="git commit -m "
+gset() {
+  git remote set-url origin git@github.com:puraminy/$1.git
+}
+gclone() { 
+  rm -rf $1
+  git clone git@github.com:puraminy/$1.git
+  cd $1
+}
+gadd() { 
+  git remote add origin git@github.com:puraminy/$1.git
+  git push -u origin master
+}
+gup() {
+   git add $1
+   git commit -m "Adding $1"
+   git push 
+}
+gdown() {
+  git fetch
+  git checkout origin/master -- $1
+}
+sethome() {
+    printf 'export HDIR="%s"\n' "$PWD" >> ~/myhome
+    source /home/ahmad/myhome
+    alias myhome="cd $HDIR"
+}
+
+
+vis() {
+        DIR=$PWD
+        for i in "$@"
+        do
+                for _file in ${DIR}/*"${i}"*; do
+                    if [ -f "${_file}" ]; then
+                         vi "${_file}"
+                         break
+                    fi
+                done
+        done
+}
+
+gd() {
+        DIR=$PWD
+        for i in "$@"
+        do
+                for _dir in ${DIR}/*"${i}"*/; do
+                    if [ -d "${_dir}" ]; then
+                         DIR="${_dir}"
+                         cd "${DIR}"
+                         break
+                    fi
+                done
+        done
+}
+
+
+mvc() {
+	mv "$1" /media/ahmad/8A80D5C380D5B643/linux/
+}
+setup() {
+	rm -r dist
+	python3 setup.py sdist bdist_wheel
+}
+
+instnr() {
+	pip install -i https://test.pypi.org/simple/ nodcast==0.1.$1
+}
+
+alias gpush="git push -u origin master"
+alias gchk="git checkout origin/master --"
+alias pin="ping google.com"
+nodr() {
+	cd /home/ahmad/recs/nodcast/nodcast/
+	#gnome-terminal  --tab-with-profile=nodcast  -- 
+	py /home/ahmad/recs/nodcast/nodcast/nodcast.py --hotkey=rrr
+}
+nodd() {
+	cd /home/ahmad/recs/nodcast/nodcast/
+	#gnome-terminal  --tab-with-profile=nodcast  -- 'py /home/ahmad/recs/nodcast/nodcast.py'
+	py /home/ahmad/recs/nodcast/nodcast/nodcast.py
+}
+nodi() {
+    cd ~/recs/nodcast/nodcast
+    vi nodcast.py
+}
+
+alias testpypi="python3 -m twine upload --repository testpypi dist/*"
+alias pypi="python3 -m twine upload dist/*"
+
+alias psm="py ~/recs/pdf-summarizer/src/pdfSummarizer.py"
+alias myhome="cd $HDIR"
+
+# test if the prompt var is not set
+fvi () { 
+    find ~/babakdsp/apps/ -iname "*$1*" -exec vi {} + ; 
+}
+
+
+
+if [ -z "$PS1" ]; then
+    # prompt var is not set, so this is *not* an interactive shell
+    return
+fi
+a () 
+{ 
+    local in="$(echo " $*" | sed -e 's/\[/(/g' -e 's/\]/)/g')";
+    gawk -M -v PREC=201 -M 'BEGIN {printf("%.60g\n",'"${in-0}"')}' < /dev/null
+}
+proxy() {
+	if [ -z $1 ]; then
+		if [ -z $HTTPS_PROXY ]; then
+		   echo "proxy was not set!"
+		else
+		   echo "proxy is on ${HTTPS_PROXY}"
+		fi
+	elif [[ $1 == "tor" ]]; then
+		export http_proxy=https://127.0.0.1:8118
+		export https_proxy=https://127.0.0.1:8118
+		export HTTP_PROXY=https://127.0.0.1:8118
+		export HTTPS_PROXY=https://127.0.0.1:8118
+		echo "proxy was set to TOR! through privoxy"
+	elif [[ $1 == "apt" ]]; then
+		export http_proxy=https://127.0.0.1:8118
+		export https_proxy=https://127.0.0.1:8118
+		export HTTP_PROXY=https://127.0.0.1:8118
+		export HTTPS_PROXY=https://127.0.0.1:8118
+		echo "proxy was set to apt! through privoxy"
+		echo 'Acquire::http::Proxy "http://127.0.0.1:8118";' | sudo tee -a /etc/apt/apt.conf
+		echo 'Acquire::https::Proxy "https://127.0.0.1:8118";' | sudo tee -a /etc/apt/apt.conf
+	elif [[ $1 == "fodev" ]]; then
+		export http_proxy=https://fodev.org:8118
+		export https_proxy=https://fodev.org:8118
+		export HTTP_PROXY=https://fodev.org:8118
+		export HTTPS_PROXY=https://fodev.org:8118
+		echo "proxy was set to fodev.org"
+	elif [[ $1 == "off" ]]; then
+		unset http_proxy
+		unset https_proxy
+		unset HTTP_PROXY
+		unset HTTPS_PROXY	
+		echo "proxy was unset!"
+        else
+		export http_proxy=https://$1
+		export https_proxy=https://$1
+		export HTTP_PROXY=https://$1
+		export HTTPS_PROXY=https://$1
+		echo "proxy was set to ${1}"
+
+	fi
+}
+export WANDB_MODE=dryrun
+alias smi=nvidia-smi
+alias gdown="~/downloads/g.pl"
+alias vil='vim -c "normal! '\''0"' #open the last file opened by vim
+alias vil1='vim -c "normal! '\''1"'
+alias vil2='vim -c "normal! '\''2"'
+alias vil3='vim -c "normal! '\''3"'
+alias vil4='vim -c "normal! '\''4"'
+alias vibro='vim -c "browse oldfiles"'
+alias tmuxr='tmux attach -t 0'
+alias a-tmuxr='tmux attach -t 0'
+alias b-tmuxr='tmux attach -t 1'
+alias c-tmuxr='tmux attach -t 2'
+alias iran="~/iran.sh"
+md() {
+pandoc $1 | lynx -stdin
+}
+connew() {
+   conda create -n $1 python=3.7.10 anaconda
+}
+condel() {
+   conda remove -n $1 --all
+}
+alias search="grep -iRl "
+alias search-mfit="grep --exclude-dir=""data"" -iRl "
+alias bashrc="vim ~/.bashrc.old"
+alias vimrc="vim ~/.vimrc"
+alias vif="vim +normal!\'F"
+alias via="vim +normal!\'A"
+alias vib="vim +normal!\'B"
+alias findfile="find . -type f -name "
+
+myfind() {
+	find $1 -name $2  2>&1 | grep -v "Permission denied"
+}
+
+alias mywget="wget -e use_proxy=yes -e https_proxy=fodev.org:8118"
+alias data="cd /drive3/ahmad/data/rainbow"
+alias rcopy="rclone copy -P"
+alias pin="ping google.com"
+alias ch="sethome"
+alias notebooks="cd ~/multifit/notebooks/" 
+alias per="cd ~/per"
+alias nlp="cd ~/course-nlp"
+alias jupair="jupytext --set-formats ipynb,py"
+alias jusync="jupytext --sync"
+alias nvid="nvidia-smi"
+alias lst_tmux="tmux ls"
+alias nbs="cd ~/nbs"
+epochs() {
+  cd ~/nbs/epochs
+  ls *.epochs
+}
+results() {
+  cd ~/t5_results
+  vim .
+}
+aval() {
+  cd ~/comet-atomic-2020-t5-colab/system_eval/
+}
+mkd() {
+  mkdir -p $1
+  cd $1
+}
+mysort() {
+   python ~/eval/mysort.py $@
+   pcv $1
+}
+
+valall() {
+   if [ "$*" == "" ]; then
+	   cat *inputs > all_inputs
+	   cat *targets > all_targets
+	   cat *predictions > all_1_predictions
+	   val all_1_predictions 
+   else
+	   cat $1*inputs > $1_all_inputs
+	   cat $1*targets > $1_all_targets
+	   cat $1*predictions > $1_all_1_predictions
+	   val $1_all_1_predictions 
+   fi
+}
+mydiff() {
+   python ~/eval/mydiff.py $1 $2
+   f=$(basename $1)
+   g=$(basename $2)
+   f="${f%.*}"
+   g="${g%.*}"
+   pcv "merge_${f}_${g}.csv"
+}
+val() {
+   echo "eval ${PWD}"
+   if [ "$*" == "" ]; then
+	   echo "Processing all files in ${PWD}"
+	   for file in ./*predictions; do
+		   f=$(basename $file)
+		   echo $f
+		   python ~/eval/eval.py $PWD "$f" $@ #| tee "${PWD}/${1}_results"
+	   done
+   elif [[ $1 == *"prediction"* ]]; then 
+	   echo "Processing ${1}"
+	   python ~/eval/eval.py $PWD $@ #| tee "${PWD}/${1}_results"
+   else
+	   echo "Processing all files in subfolders of ${PWD}"
+	   for file in $(find ${PWD} -name '*predictions'); do 
+		   f=$(basename "${file}")
+		   dir=$(dirname "${file}")
+		   echo "+++++++++++++++++++++++++++++++++++++++++"
+		   echo $file
+		   python ~/eval/eval.py "${dir}" "${f}" --result=$1 ${@:2} #| tee "${PWD}/${1}_results"
+	   done
+   fi
+}
+pcv() {
+   if [ "$*" == "" ]; then
+	    column -t -s, -n "/home/ahmad/results.csv" | less -F -S -X -K
+   else
+	    column -t -s, -n "$@" | less -F -S -X -K
+   fi
+}
+ptv() {
+    column -t -s $'\t' -n "$@" | less -F -S -X -K
+}
+alias reval="py /home/ahmad/rainbow/bin/evaluate.py"
+size() {
+   python ~/eval/size.py $PWD $@ #| tee "${PWD}/${1}_results"
+}
+alias drive="cd /drive3/ahmad"
+alias res="cd ~/results"
+alias downl="cd ~/downloads/"
+
+nw() {
+	tmux new -s "$1"
+}
+rtt() {
+	tmux attach -t "$1"
+}
+vip() {
+	PWD=$PWD
+	files=""
+	counter=0
+	pat=0
+	for i in "$@"
+	do
+		if [ -f $i ]; then
+			files=$i
+			break
+		elif [ -f $PWD/$i ]; then
+			files=$PWD/$i
+			break
+		fi
+		#echo "i=${i}"
+		#IN=(${i//*/ })
+		IFS='*' read -ra IN <<< "$i"
+		#echo "IN=${IN[@]}"
+		k=""
+		for j in "${IN[@]}"; do
+			#echo "j=${j}"
+			k="${k}"*"${j}"
+		done
+		#echo "k=${k}"
+		for _file in ${PWD}/*${i}*; do
+		    if [ -f "${_file}" ]; then
+			    files="${files} ${_file}" 
+			    pat=$((pat+1))
+			    counter=$((counter+1))
+			    if (( pat > 0 )); then
+				    break
+		            fi
+		    fi
+		done
+		if (( counter > 0 )); then
+		    break
+	        fi
+        done
+	if [ -z $files ]; then
+		vim $1
+	else
+		vim ${files}
+	fi
+}
+gd() {
+	if [ "$*" == "" ]; then
+	    cd */
+	    return
+	fi
+	for i in "$@"
+	do
+		if [ -d "${PWD}"/$i ]; then
+			cd $i
+		else
+			cd "${PWD}"/*$i*/
+	       fi
+        done
+}
+
+fd() {
+	if [ "$*" == "" ]; then
+	    cd *
+	    return
+	else
+	    args="$@"
+	fi
+	for i in "${args}"
+	do
+		if [ -d ${PWD}/${i} ]; then
+			cd "${i}"
+		else
+			pat=${PWD}/${i}*/
+			cd ${pat}
+	       fi
+        done
+}
+
+ld() {
+	for i in "$@"
+	do
+		if [ -d ${PWD}/${i} ]; then
+			cd "${i}"
+		else
+			pat=${PWD}/*${i}/
+			cd ${pat}
+	       fi
+        done
+}
+
+append() {
+	DIR=$PWD
+	files=""
+	counter=0
+	pat=0
+	for i in "$@"
+	do
+		#echo "i=${i}"
+		#IN=(${i//*/ })
+		IFS='*' read -ra IN <<< "$i"
+		#echo "IN=${IN[@]}"
+		k=""
+		for j in "${IN[@]}"; do
+			#echo "j=${j}"
+			k="${k}"*"${j}"
+		done
+		#echo "k=${k}"
+		for _file in ${DIR}/*${i}*; do
+		    if [ -f "${_file}" ]; then
+			    files="${files} ${_file}" 
+			    pat=$((pat+1))
+			    counter=$((counter+1))
+			    if (( pat > 0 )); then
+				    break
+		            fi
+		    fi
+		done
+		if (( counter > 1 )); then
+		    break
+	        fi
+        done
+	convert +append ${files} merge_${1}_${2}.png
+	vim .
+}
+
+diff() {
+	DIR=$PWD
+	files=""
+	counter=0
+	pat=0
+	for i in "$@"
+	do
+		#echo "i=${i}"
+		#IN=(${i//*/ })
+		IFS='*' read -ra IN <<< "$i"
+		#echo "IN=${IN[@]}"
+		k=""
+		for j in "${IN[@]}"; do
+			#echo "j=${j}"
+			k="${k}"*"${j}"
+		done
+		#echo "k=${k}"
+		for _file in ${DIR}/*${i}*; do
+		    if [ -f "${_file}" ]; then
+			    files="${files} ${_file}" 
+			    pat=$((pat+1))
+			    counter=$((counter+1))
+			    if (( pat > 0 )); then
+				    break
+		            fi
+		    fi
+		done
+		if (( counter > 1 )); then
+		    break
+	        fi
+        done
+	vimdiff ${files}
+}
+
+edit-proj() {
+  vim ~/multifit/notebooks/ml.py
+}
+run-proj() {
+  cd ~/multifit/notebooks
+  ipython ml.py
+}
+alias rmfit=run-proj
+alias emfit=edit-proj
+alias sc=screen
+alias lesa="less -FX ~/aa"
+alias proj="cd ~/multifit"
+export PATH="~/bin;/home/ahmad/google-cloud-sdk/bin:$PATH"
+alias go="ping -c 2 google.com"
+alias dns="nmcli dev show | grep DNS"
+alias ju="jupyter notebook --no-browser --port=8889"
+alias py="python"
+alias ipy="ipython"
+alias juconv="jupyter nbconvert --to script"
+alias rmd="rm -r */"
+alias pour="cd /drive3/ahmad/"
+backup() {
+	mv $1 /drive3/ahmad/$2
+}
+mydu() {
+	du $1 -h --threshold=1G | sort -h
+}
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+#__conda_setup="$('/home/ahmad/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+#if [ $? -eq 0 ]; then
+#    eval "$__conda_setup"
+#else
+#    if [ -f "/home/ahmad/miniconda3/etc/profile.d/conda.sh" ]; then
+#        . "/home/ahmad/miniconda3/etc/profile.d/conda.sh"
+#    else
+#        export PATH="/home/ahmad/miniconda3/bin:$PATH"
+#    fi
+#fi
+#unset __conda_setup
+# <<< conda initialize <<<
+#alias python=/home/ahmad/miniconda3/bin/python3.8
+#ping -c 2 google.com
+export FORCE_CUDA="1"
+export PATH="/usr/local/cuda-10.1/bin:/usr/local/cuda-11.2/bin:/usr/local/cuda/bin:$PATH"
+#export CUDA_HOME="/usr/local/cuda-11.2"
+export CUDA_HOME="/usr/local/cuda"
+setcuda() {
+	cuda_ver=$1
+	if [ $cuda_ver = "11" ]; then
+		echo "CUDA 11"
+		export LD_LIBRARY_PATH="/usr/local/cuda-11.2/lib64:/usr/local/cuda-10.1/lib64:/usr/local/cuda-11.2/extras/CUPTI/lib64:/usr/local/cuda/lib64"
+		export LD_LIBRARY_PATH="/usr/local/cuda-11.2/targets/x84_64-linux/lib:$LD_LIBRARY_PATH"
+	else
+		echo "CUDA 10"
+		export LD_LIBRARY_PATH="/usr/local/cuda-10.1/lib64:/usr/local/cuda-10.1/extras/CUPTI/lib64:/usr/local/cuda/lib64"
+		export LD_LIBRARY_PATH="/usr/local/cuda-10.1/targets/x86_64-linux/lib:$LD_LIBRARY_PATH"
+	fi
+	export LD_LIBRARY_PATH="/drive3/ahmad/src/cuda/lib64:$LD_LIBRARY_PATH"
+}
+#setcuda 11
+alias gcommit="git commit -m "
+gclone() { 
+	  git clone git@github.com:puraminy/$1.git
+}
+
+ginit() {
+	#git config --global url."https://".insteadOf git://
+        rm -rf .git
+	echo "# ${1}" >> README.md
+	git init
+	git add --all
+	git commit -m "first commit"
+	git branch -M main
+	git remote add origin git@github.com:puraminy/$1.git
+	git push -u origin main
+}
+gset() {
+  git remote set-url origin git@github.com:puraminy/$1.git
+}
+gadd() { 
+  git remote add origin git@github.com:puraminy/$1.git
+  git push -u origin master
+}
+mycat() {
+  result=$(basename "$PWD")
+  res="${result// /_}"
+  echo $res
+  cat *.mp3 > /home/ahmad/rec_files/"${1}_${result}.mp3" 
+}
+mpw() {
+  result=$(basename "$PWD")
+  res="${result// /_}"
+  echo $res
+  mp3wrap /home/ahmad/rec_files/"${1}_${result}.mp3" *.mp3
+}
+
+gup() {
+   if [ $1 = "all" ]; then
+       git add -A
+   else
+       git add $1
+   fi
+   if [ $3 = "" ]; then
+       git commit -m "... Adding $1"
+   else
+       git commit -m "$3"
+   fi
+   branch=$2
+   if [ $2 = "" ]; then
+	branch=main
+   fi
+   git push -u origin $branch
+}
+sfork() {
+   git fetch upstream
+   git checkout main
+   git merge upstream/main
+}
+vo() {
+   vim -c "MRU ${1}"
+}
+gupall() {
+   if [ "$*" = "" ]; then
+	  echo "Please enter the name of branch"
+	  return
+   fi 
+   git add .
+   git commit -m "... Adding all"
+   git push -u origin $1 
+}
+mgup() {
+   curdir=$PWD
+   cp $1 ~/gitup/
+   cd ~/gitup
+   git add $1
+   git commit -m "$2 ... Adding $1"
+   git push -u origin master
+   cd $curdir
+}
+alias ibm='cd ~/recs/ibmss'
+alias req="py ~/recs/ibmss/request.py "
+alias gpush="git push -u origin master"
+alias gchk="git checkout origin/master --"
+
+alias b1="cd .."
+alias b2="cd ../.."
+alias b3="cd ../../.."
+alias b4="cd ../../../.."
+
+restart() {
+        ser=$ser
+        if [[ $1 == *.service ]]; then
+          ser="$1"
+        fi
+        systemctl restart $ser
+}
+start() {
+        ser=$ser
+        if [[ $1 == *.service ]]; then
+          ser="$1"
+        fi
+        systemctl start $ser
+}
+status() {
+        ser=$ser
+        if [[ $1 == *.service ]]; then
+          ser="$1"
+        fi
+        systemctl -l --no-pager status $ser
+}
+
+stop() {
+        ser=$ser
+        if [[ $1 == *.service ]]; then
+          ser="$1"
+	fi
+        systemctl stop $ser 
+}
+ser_enable() {
+        ser=$ser
+        if [[ $1 == *.service ]]; then
+          ser="$1"
+        fi
+        systemctl enable $ser
+}
+
+sethome() {
+    printf 'export HDIR="%s"\n' "$PWD" >> ~/myhome
+    source /home/ahmad/myhome
+    alias myhome="cd $HDIR"
+}
+add2pp() {
+    printf 'export PYTHONPATH="%s;%s"\n' "$PWD" "$PYTHONPATH" >> ~/pp
+    source /home/ahmad/pp
+}
+gitis() {
+  git add -A
+  git commit -m "commit ${1}"
+  git push
+}
+gitall() {
+  temp=${PWD}
+  cd ~/mt5-comet
+  git add -A
+  git commit -m "commit ${1}"
+  git push
+  cd ${temp}
+}
+gitip() {
+  temp=${PWD}
+  cd ~/ATTEMPT
+  git add -A
+  git commit -m "commit ${1}"
+  git push
+  cd ${temp}
+}
+
+myalias() {
+    if [[ $3 == "vi" ]]; then
+       printf 'alias %s="vi %s"\n' "$1" "${PWD}/$2" >> ~/aa
+    elif [[ $3 == "py" ]]; then
+       printf 'alias %s="py %s"\n' "$1" "${PWD}/$2" >> ~/aa
+    else
+       printf 'alias %s="%s"\n' "$1" "$2" >> ~/aa
+    fi
+    source /home/ahmad/aa
+}
+hist() {
+   history | grep $1
+}
+
+mypath() {
+    printf 'alias %s="%s"\n' "$1" "cd $PWD" >> ~/aa
+    #printf 'export %s="%s"\n' "$1" "$PWD" >> ~/aa
+    #printf 'complete -F _complete_alias %s\n' "$1" >> ~/aa
+    source /home/ahmad/aa
+}
+source /home/ahmad/aa
+#cd $HDIR
+alias myhome="cd $HDIR"
+alias home="cd ~"
+
+vig() {
+    vim -c "'0" -c "$1"
+}
+export WANDB_API_KEY=local-f9c4bd7021095cd4db347703eb7919b6728e79a6
+export WANDB_BASE_URL=http://172.16.143.7:8080
+

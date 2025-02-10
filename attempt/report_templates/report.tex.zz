@@ -1,0 +1,227 @@
+\documentclass[]{article}
+\usepackage{booktabs} % for professional tables
+\usepackage{makecell}
+\usepackage{multirow,multicol}
+\usepackage{graphicx} 
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{datetime}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage[margin=1in, lmargin=1cm, rmargin=1cm]{geometry}
+
+%opening
+\begin{document}
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{zz:SIP}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{50-123} & \textbf{50-45} & \textbf{50-76} & \textbf{100-123} & \textbf{100-45} & \textbf{100-76} & \textbf{500-123} & \textbf{500-45} & \textbf{500-76} \\
+\hline
+0) \hyperref[fig:SILP]{SILP} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{79.5} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+1) \hyperref[fig:SLPI]{SLPI} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{79.1} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+2) \hyperref[fig:SIL]{SIL} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{78.7} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+3) \hyperref[fig:SLP]{SLP} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{76.3} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+4) \hyperref[fig:P]{P} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{76.1} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+5) \hyperref[fig:SL]{SL} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{75.0} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+6) \hyperref[fig:PI]{PI} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{66.6} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+7) \hyperref[fig:SIP]{SIP} &  $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{58.4} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ & $ \textcolor{blue}{} $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+            \begin{table*}[h]
+                \label{table:1}
+                \caption{ zz 100@45@m_score}
+                \begin{adjustbox}{width=1\textwidth}
+                \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                \hline
+                method &  \textbf{qqp} & \textbf{sst2} & \textbf{mnli} & \textbf{rte} & \textbf{cola} & \textbf{stsb} & \textbf{mrpc} & \textbf{qnli} & avg. \\
+\hline
+SILP &  $ @[87.8] $ & $ @[92.6] $ & $ @[66.8] $ & $ @[65.5] $ & $ @[68.6] $ & $ @[87.7] $ & $ @[76.5] $ & $ @[90.6] $ & $ @79.5 $ \\
+SLPI &  $ @[87.0] $ & $ @[89.8] $ & $ @[58.8] $ & $ @[73.4] $ & $ @[68.6] $ & $ @[88.4] $ & $ @[74.0] $ & $ @[92.6] $ & $ @79.1 $ \\
+SIL &  $ @[82.0] $ & $ @[93.0] $ & $ @[64.0] $ & $ @[64.0] $ & $ @[68.0] $ & $ @[88.1] $ & $ @[81.4] $ & $ @[89.2] $ & $ @78.7 $ \\
+SLP &  $ @[89.4] $ & $ @[93.0] $ & $ @[47.6] $ & $ @[66.2] $ & $ @[68.6] $ & $ @[86.5] $ & $ @[69.1] $ & $ @[89.8] $ & $ @76.3 $ \\
+P &  $ @[88.0] $ & $ @[93.6] $ & $ @[44.8] $ & $ @[64.0] $ & $ @[68.6] $ & $ @[88.3] $ & $ @[69.1] $ & $ @[92.6] $ & $ @76.1 $ \\
+SL &  $ @[88.6] $ & $ @[93.2] $ & $ @[42.6] $ & $ @[53.2] $ & $ @[68.6] $ & $ @[83.9] $ & $ @[77.9] $ & $ @[91.8] $ & $ @75.0 $ \\
+PI &  $ @[86.4] $ & $ @[81.2] $ & $ @[56.8] $ & $ @[67.6] $ & $ @[68.6] $ & $ @[1.5] $ & $ @[80.9] $ & $ @[89.6] $ & $ @66.6 $ \\
+SIP &  $ @[nan] $ & $ @[nan] $ & $ @[48.2] $ & $ @[nan] $ & $ @[68.6] $ & $ @[nan] $ & $ @[nan] $ & $ @[nan] $ & $ @58.4 $ \\
+\hline 
+
+                \end{tabular}
+                \end{adjustbox}
+            \end{table*}
+            
+
+mytable
+myimage
+\end{document}

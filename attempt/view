@@ -1,0 +1,560 @@
+Bash params:  _cat=nli1000 _n=1000 _tasks=rte@@@mnli _stasks=qnli@@@mnli _pt=1 _ptm=1 _pv=1 _ppx=nli _pat=1 _pvv=1
+Global: 
+#-------------------------(Source) Prompt Tuning ---------------------
+Extracting params from 1
+Main experiment variables 
+Source tasks are: qnli@@@mnli
+adding qnli
+mnli already exists in tasks
+All training tasks are: rte mnli qnli
+run would be 
+      _pt _temp 0-pt 
+      _cat nli1000 
+      _exp pt-sep-1000-200 
+      _tn 1000 
+      _tsn 200 
+      _max 
+      _tasks rte mnli qnli 
+      _ppx nli_1000
+      _lp True
+      _bs 16
+       
+      
+      
+      
+run would be 
+      _pt _temp 0-pt 
+      _cat nli1000 
+      _exp pt-sep-1000-200 
+      _tn 1000 
+      _tsn 200 
+      _max 
+      _tasks rte mnli qnli 
+      _ppx nli_1000
+      _lp True
+      _bs 16
+       
+      
+      
+      
+Main experiment variables: 
+Bash Prarams:  _pt=1 _temp=0-pt _cat=nli1000 _exp=pt-sep-1000-200 _tn=1000 _tsn=200 _max=1 _tasks=rte@mnli@qnli _ppx=nli_1000 _lp=True _bs=16 _pv=1
+Extra Prarams: 
+Run Prarams: 
+Tasks: rte@mnli@qnli
+Separated Tasks: rte#mnli#qnli
+log: /home/ahmad/logs
+==================method: pt === epochs: 20 ===== samples: True ==========
+no Adapter
+Learn: True, Load: 
+exp: nli1000/pt-sep-1000-200 
+Params: 
+ --method=pt
+ --data_path=atomic2020
+ --use_all_data=False
+ --@max_train_samples=1000
+ --max_val_samples=50
+ --max_test_samples=200
+ --samples_per_head=1
+ --overwrite_cache=True
+ --@data_seed=123
+ --@task_name=rte#mnli#qnli
+ --add_prefix=False
+ --ds_config=en@
+ --max_source_length=450
+ --max_target_length=25
+ --test_ds_config=full-test@
+ --do_train=True
+ --do_test=True
+ --do_eval=False
+ --report_to=wandb@
+ --model_name_or_path=t5-base
+ --tokenizer_name=t5-base
+ --use_fast_tokenizer=True
+ --save_total_limit=1
+ --save_checkpoint=False
+ --save_model=False
+ --load_best_model_at_end=True
+ --per_device_train_batch_size=16
+ --per_device_eval_batch_size=16
+ --trainer_shuffle=True
+ --skip_specials=True
+ --@num_train_epochs=20
+ --adjust_epochs=True
+ --warmup_steps=none
+ --prompt_tuning=True
+ --use_optimizer=True
+ --opt_type=regular
+ --prompt_encoders_dir=prompts
+ --load_prompts=True
+ --ignore_train_if_exist=True
+ --prompts_prefix=nli_1000
+ --source_prompt_learning_rate=0.01
+ --target_prompt_learning_rate=0.01
+ --@num_prompt_tokens=40
+ --@prompt_encoder_type=mlp#!lstm
+ --template=0-pt
+ --@num_prompts=2
+ --@task_comb=none
+ --@prompt_sharing=shared_encoders
+ --init_from_words=False
+ --load_source_prompts=False
+ --load_prompts=True
+ --ignore_if_not_exist=True
+ --@learn_loaded_prompts=False
+ --save_these_prompts=all
+ --rels=rte#mnli#qnli 
+Run Params:  
+Extra: 
+#--------------------------- Multi Task (Source) Prompt Tuning ------------------
+Source tasks are: qnli@@@mnli
+Extracting params from 1
+Main experiment variables 
+run would be 
+      _pt _multi _temp 0-pcom 
+      _cat nli1000  
+      _exp pt-multi-1000-200  
+      _tasks qnli mnli  
+      _tn 1000   
+      _tsn 200  
+      _ppx nli_1000_mnli-qnli
+      _bs 16
+       
+      
+      
+      
+run would be 
+      _pt _multi _temp 0-pcom 
+      _cat nli1000  
+      _exp pt-multi-1000-200  
+      _tasks qnli mnli  
+      _tn 1000   
+      _tsn 200  
+      _ppx nli_1000_mnli-qnli
+      _bs 16
+       
+      
+      
+      
+Main experiment variables: 
+Bash Prarams:  _pt=1 _multi=1 _temp=0-pcom _cat=nli1000 _exp=pt-multi-1000-200 _tasks=qnli@mnli _tn=1000 _tsn=200 _ppx=nli_1000_mnli-qnli _bs=16 _pv=1
+Extra Prarams: 
+Run Prarams: 
+Tasks: qnli@mnli
+log: /home/ahmad/logs
+==================method: pt === epochs: 20 ===== samples: True ==========
+no Adapter
+Learn: True, Load: 
+exp: nli1000/pt-multi-1000-200 
+Params: 
+ --method=pt
+ --data_path=atomic2020
+ --use_all_data=False
+ --@max_train_samples=1000
+ --max_val_samples=50
+ --max_test_samples=200
+ --samples_per_head=1
+ --overwrite_cache=True
+ --@data_seed=123
+ --@task_name=qnli@mnli
+ --add_prefix=False
+ --ds_config=en@
+ --max_source_length=200
+ --max_target_length=120
+ --test_ds_config=full-test@
+ --do_train=True
+ --do_test=True
+ --do_eval=False
+ --report_to=wandb@
+ --model_name_or_path=t5-base
+ --tokenizer_name=t5-base
+ --use_fast_tokenizer=True
+ --save_total_limit=1
+ --save_checkpoint=False
+ --save_model=False
+ --load_best_model_at_end=True
+ --per_device_train_batch_size=16
+ --per_device_eval_batch_size=16
+ --trainer_shuffle=True
+ --skip_specials=True
+ --@num_train_epochs=20
+ --adjust_epochs=True
+ --warmup_steps=none
+ --prompt_tuning=True
+ --use_optimizer=True
+ --opt_type=regular
+ --prompt_encoders_dir=prompts
+ --load_prompts=False
+ --ignore_train_if_exist=True
+ --prompts_prefix=nli_1000_mnli-qnli
+ --source_prompt_learning_rate=0.01
+ --target_prompt_learning_rate=0.01
+ --@num_prompt_tokens=40
+ --@prompt_encoder_type=mlp#!lstm
+ --template=0-pcom
+ --@num_prompts=2
+ --@task_comb=none
+ --@prompt_sharing=shared_encoders
+ --init_from_words=False
+ --load_source_prompts=False
+ --load_prompts=True
+ --ignore_if_not_exist=True
+ --@learn_loaded_prompts=False
+ --save_these_prompts=all
+ --rels=qnli@mnli 
+Run Params:  
+Extra: 
+Using source prompts 
+#-------------- Prompt Tuning using source prompts for rte@@@mnli------------
+Source tasks are: qnli#mnli
+Used source prompts are: src_nli_1000_mlp_qnli@src_nli_1000_mlp_mnli
+Extracting params from 1
+Main experiment variables 
+# Prompt Tuning using source prompts for rte@@@mnli using multi_com ------------
+multi_com: Using src_nli_1000_mnli-qnli_mlp_com for rte mnli 
+run would be 
+         _multi
+         _cat nli1000 
+         _exp pat-multi_com-1000-200 
+         _tasks rte mnli
+         _temp 0-pt
+         _tn 1000
+         _tsn 200
+         _ppx pt
+         _src src_nli_1000_mnli-qnli_mlp_com@
+         _max
+         
+         
+         --attend_to_all=True
+         
+         --method=multi_com
+         
+Main experiment variables: attend_to_all--method
+Bash Prarams:  _multi=1 _cat=nli1000 _exp=pat-multi_com-1000-200 _tasks=rte@mnli _temp=0-pt _tn=1000 _tsn=200 _ppx=pt _src=src_nli_1000_mnli-qnli_mlp_com@ _max=1 _pv=1
+Extra Prarams:  --attend_to_all=True --method=multi_com
+Run Prarams:  -mv attend_to_all--method
+Tasks: rte@mnli
+log: /home/ahmad/logs
+==================method: ptat === epochs: 20 ===== samples: True ==========
+no Adapter
+Learn: True, Load: 
+exp: nli1000/pat-multi_com-1000-200 
+Params: 
+ --method=ptat
+ --data_path=atomic2020
+ --use_all_data=False
+ --@max_train_samples=1000
+ --max_val_samples=50
+ --max_test_samples=200
+ --samples_per_head=1
+ --overwrite_cache=True
+ --@data_seed=123
+ --@task_name=rte@mnli
+ --add_prefix=False
+ --ds_config=en@
+ --max_source_length=450
+ --max_target_length=25
+ --test_ds_config=full-test@
+ --do_train=True
+ --do_test=True
+ --do_eval=False
+ --report_to=wandb@
+ --model_name_or_path=t5-base
+ --tokenizer_name=t5-base
+ --use_fast_tokenizer=True
+ --save_total_limit=1
+ --save_checkpoint=False
+ --save_model=False
+ --load_best_model_at_end=True
+ --per_device_train_batch_size=32
+ --per_device_eval_batch_size=32
+ --trainer_shuffle=True
+ --skip_specials=True
+ --@num_train_epochs=20
+ --adjust_epochs=True
+ --warmup_steps=none
+ --prompt_tuning=True
+ --use_optimizer=True
+ --opt_type=regular
+ --prompt_encoders_dir=prompts
+ --load_prompts=False
+ --ignore_train_if_exist=True
+ --prompts_prefix=pt
+ --prompt_encoder_type=mlp#!emb#!lstm
+ --@load_source_prompts=True#False
+ --@num_prompt_tokens=40
+ --@num_source_prompts=0
+ --@num_target_prompts=-1
+ --learn_attention=True
+ --use_prompt_set=False
+ --@source_prompts=src_nli_1000_mnli-qnli_mlp_com@
+ --@learn_loaded_prompts=True#False
+ --@use_private_prompts=True#False
+ --@learn_attention=True
+ --sel_positves=False
+ --@learn_source_prompts=True
+ --load_prompts=True
+ --@learn_loaded_prompts=True#False
+ --ignore_if_not_exist=False
+ --rels=rte@mnli
+ --@source_prompts_order=desc#rand
+ --@num_random_masks=0
+ --@compose_method=wavg#cat
+ --@template=0-pt
+ --attn_tuning=True#!False
+ --attend_input=False#True
+ --attend_for=none#inp_target
+ --attend_source=True#!False
+ --@add_target=False
+ --@target_share=none#0.5#0#-1#1
+ --@attend_target=False#True
+ --@target_share_temperature=1.
+ --source_prompt_learning_rate=0.01
+ --target_prompt_learning_rate=0.01
+ --attn_learning_rate=0.01
+ --@attn_method=rb#const
+ --@temperature=5.#0.01
+ --@anneal_dir=-1#0
+ --normalize=True
+ --anneal_min=10e-10
+ --anneal_rate=none
+ --@apply_softmax_to=after#nothing
+ --@gen_route_methods=sigmoid@direct
+ --route_method=direct
+ --init_from_words=False
+ --save_these_prompts=none
+ --save_source_prompts=True 
+Run Params:  -mv attend_to_all--method 
+Extra:  --attend_to_all=True --method=multi_com
+# Prompt Tuning using source prompts for rte@@@mnli using sep_com ------------
+sep_com: Using src_nli_1000_mnli-qnli_mlp_com for rte mnli 
+run would be 
+         _multi
+         _cat nli1000 
+         _exp pat-sep_com-1000-200 
+         _tasks rte mnli
+         _temp 0-pt
+         _tn 1000
+         _tsn 200
+         _ppx pt
+         _src src_nli_1000_mnli-qnli_mlp_com@
+         _max
+         
+         
+         --attend_to_all=True
+         
+         --method=sep_com
+         
+Main experiment variables: attend_to_all--method
+Bash Prarams:  _multi=1 _cat=nli1000 _exp=pat-sep_com-1000-200 _tasks=rte@mnli _temp=0-pt _tn=1000 _tsn=200 _ppx=pt _src=src_nli_1000_mnli-qnli_mlp_com@ _max=1 _pv=1
+Extra Prarams:  --attend_to_all=True --method=sep_com
+Run Prarams:  -mv attend_to_all--method
+Tasks: rte@mnli
+log: /home/ahmad/logs
+==================method: ptat === epochs: 20 ===== samples: True ==========
+no Adapter
+Learn: True, Load: 
+exp: nli1000/pat-sep_com-1000-200 
+Params: 
+ --method=ptat
+ --data_path=atomic2020
+ --use_all_data=False
+ --@max_train_samples=1000
+ --max_val_samples=50
+ --max_test_samples=200
+ --samples_per_head=1
+ --overwrite_cache=True
+ --@data_seed=123
+ --@task_name=rte@mnli
+ --add_prefix=False
+ --ds_config=en@
+ --max_source_length=450
+ --max_target_length=25
+ --test_ds_config=full-test@
+ --do_train=True
+ --do_test=True
+ --do_eval=False
+ --report_to=wandb@
+ --model_name_or_path=t5-base
+ --tokenizer_name=t5-base
+ --use_fast_tokenizer=True
+ --save_total_limit=1
+ --save_checkpoint=False
+ --save_model=False
+ --load_best_model_at_end=True
+ --per_device_train_batch_size=32
+ --per_device_eval_batch_size=32
+ --trainer_shuffle=True
+ --skip_specials=True
+ --@num_train_epochs=20
+ --adjust_epochs=True
+ --warmup_steps=none
+ --prompt_tuning=True
+ --use_optimizer=True
+ --opt_type=regular
+ --prompt_encoders_dir=prompts
+ --load_prompts=False
+ --ignore_train_if_exist=True
+ --prompts_prefix=pt
+ --prompt_encoder_type=mlp#!emb#!lstm
+ --@load_source_prompts=True#False
+ --@num_prompt_tokens=40
+ --@num_source_prompts=0
+ --@num_target_prompts=-1
+ --learn_attention=True
+ --use_prompt_set=False
+ --@source_prompts=src_nli_1000_mnli-qnli_mlp_com@
+ --@learn_loaded_prompts=True#False
+ --@use_private_prompts=True#False
+ --@learn_attention=True
+ --sel_positves=False
+ --@learn_source_prompts=True
+ --load_prompts=True
+ --@learn_loaded_prompts=True#False
+ --ignore_if_not_exist=False
+ --rels=rte@mnli
+ --@source_prompts_order=desc#rand
+ --@num_random_masks=0
+ --@compose_method=wavg#cat
+ --@template=0-pt
+ --attn_tuning=True#!False
+ --attend_input=False#True
+ --attend_for=none#inp_target
+ --attend_source=True#!False
+ --@add_target=False
+ --@target_share=none#0.5#0#-1#1
+ --@attend_target=False#True
+ --@target_share_temperature=1.
+ --source_prompt_learning_rate=0.01
+ --target_prompt_learning_rate=0.01
+ --attn_learning_rate=0.01
+ --@attn_method=rb#const
+ --@temperature=5.#0.01
+ --@anneal_dir=-1#0
+ --normalize=True
+ --anneal_min=10e-10
+ --anneal_rate=none
+ --@apply_softmax_to=after#nothing
+ --@gen_route_methods=sigmoid@direct
+ --route_method=direct
+ --init_from_words=False
+ --save_these_prompts=none
+ --save_source_prompts=True 
+Run Params:  -mv attend_to_all--method 
+Extra:  --attend_to_all=True --method=sep_com
+# Prompt Tuning using source prompts for rte@@@mnli using multi_sep ------------
+multi_sep: Using src_nli_1000_mlp_qnli@src_nli_1000_mlp_mnli for rte mnli 
+run would be 
+         _multi
+         _cat nli1000 
+         _exp pat-multi_sep-1000-200 
+         _tasks rte mnli
+         _temp 0-pt
+         _tn 1000
+         _tsn 200
+         _ppx pt
+         _src src_nli_1000_mlp_qnli@src_nli_1000_mlp_mnli
+         _max
+         
+         
+         --attend_to_all=True
+         
+         --method=multi_sep
+         
+Main experiment variables: attend_to_all--method
+Bash Prarams:  _multi=1 _cat=nli1000 _exp=pat-multi_sep-1000-200 _tasks=rte@mnli _temp=0-pt _tn=1000 _tsn=200 _ppx=pt _src=src_nli_1000_mlp_qnli@src_nli_1000_mlp_mnli _max=1 _pv=1
+Extra Prarams:  --attend_to_all=True --method=multi_sep
+Run Prarams:  -mv attend_to_all--method
+Tasks: rte@mnli
+log: /home/ahmad/logs
+==================method: ptat === epochs: 20 ===== samples: True ==========
+no Adapter
+Learn: True, Load: 
+exp: nli1000/pat-multi_sep-1000-200 
+Params: 
+ --method=ptat
+ --data_path=atomic2020
+ --use_all_data=False
+ --@max_train_samples=1000
+ --max_val_samples=50
+ --max_test_samples=200
+ --samples_per_head=1
+ --overwrite_cache=True
+ --@data_seed=123
+ --@task_name=rte@mnli
+ --add_prefix=False
+ --ds_config=en@
+ --max_source_length=450
+ --max_target_length=25
+ --test_ds_config=full-test@
+ --do_train=True
+ --do_test=True
+ --do_eval=False
+ --report_to=wandb@
+ --model_name_or_path=t5-base
+ --tokenizer_name=t5-base
+ --use_fast_tokenizer=True
+ --save_total_limit=1
+ --save_checkpoint=False
+ --save_model=False
+ --load_best_model_at_end=True
+ --per_device_train_batch_size=32
+ --per_device_eval_batch_size=32
+ --trainer_shuffle=True
+ --skip_specials=True
+ --@num_train_epochs=20
+ --adjust_epochs=True
+ --warmup_steps=none
+ --prompt_tuning=True
+ --use_optimizer=True
+ --opt_type=regular
+ --prompt_encoders_dir=prompts
+ --load_prompts=False
+ --ignore_train_if_exist=True
+ --prompts_prefix=pt
+ --prompt_encoder_type=mlp#!emb#!lstm
+ --@load_source_prompts=True#False
+ --@num_prompt_tokens=40
+ --@num_source_prompts=0
+ --@num_target_prompts=-1
+ --learn_attention=True
+ --use_prompt_set=False
+ --@source_prompts=src_nli_1000_mlp_qnli@src_nli_1000_mlp_mnli
+ --@learn_loaded_prompts=True#False
+ --@use_private_prompts=True#False
+ --@learn_attention=True
+ --sel_positves=False
+ --@learn_source_prompts=True
+ --load_prompts=True
+ --@learn_loaded_prompts=True#False
+ --ignore_if_not_exist=False
+ --rels=rte@mnli
+ --@source_prompts_order=desc#rand
+ --@num_random_masks=0
+ --@compose_method=wavg#cat
+ --@template=0-pt
+ --attn_tuning=True#!False
+ --attend_input=False#True
+ --attend_for=none#inp_target
+ --attend_source=True#!False
+ --@add_target=False
+ --@target_share=none#0.5#0#-1#1
+ --@attend_target=False#True
+ --@target_share_temperature=1.
+ --source_prompt_learning_rate=0.01
+ --target_prompt_learning_rate=0.01
+ --attn_learning_rate=0.01
+ --@attn_method=rb#const
+ --@temperature=5.#0.01
+ --@anneal_dir=-1#0
+ --normalize=True
+ --anneal_min=10e-10
+ --anneal_rate=none
+ --@apply_softmax_to=after#nothing
+ --@gen_route_methods=sigmoid@direct
+ --route_method=direct
+ --init_from_words=False
+ --save_these_prompts=none
+ --save_source_prompts=True 
+Run Params:  -mv attend_to_all--method 
+Extra:  --attend_to_all=True --method=multi_sep

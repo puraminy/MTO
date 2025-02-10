@@ -1,0 +1,6 @@
+ rouge
+ transformers==4.24.0
+ datasets==2.14.6
+ wandb
+ deepdiff
+ appdirs

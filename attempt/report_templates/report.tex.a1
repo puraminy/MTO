@@ -1,0 +1,53 @@
+\documentclass[]{article}
+\usepackage{booktabs} % for professional tables
+\usepackage{makecell}
+\usepackage{multirow,multicol}
+\usepackage{graphicx} 
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{datetime}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage[margin=1in, lmargin=1cm, rmargin=1cm]{geometry}
+
+%opening
+\begin{document}
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{a1:SL}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{50@123} & \textbf{50@45} & \textbf{50@76} & \textbf{100@123} & \textbf{100@45} & \textbf{100@76} & \textbf{500@123} & \textbf{500@45} & \textbf{500@76} \\
+\hline
+0) \hyperref[fig:P2-1]{P2-1} &  $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ \\
+\hline 
+1) \hyperref[fig:PI-1]{PI-1} &  $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ & $ $ \textcolor{green}{ 84.3 }$ $ \\
+\hline 
+2) \hyperref[fig:SILPI-1]{SILPI-1} &  $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ & $ $ \textcolor{green}{ 82.9 }$ $ \\
+\hline 
+3) \hyperref[fig:SILP-1]{SILP-1} &  $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ & $ $ \textcolor{green}{ 81.9 }$ $ \\
+\hline 
+4) \hyperref[fig:SLP-1]{SLP-1} &  $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ & $ $ \textcolor{green}{ 81.8 }$ $ \\
+\hline 
+5) \hyperref[fig:SLPI-1]{SLPI-1} &  $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ & $ $ \textcolor{green}{ 79.2 }$ $ \\
+\hline 
+6) \hyperref[fig:SIL-1]{SIL-1} &  $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ & $ $ \textcolor{green}{ 78.6 }$ $ \\
+\hline 
+7) \hyperref[fig:P]{P} &  $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ & $ $ \textcolor{green}{ 77.5 }$ $ \\
+\hline 
+8) \hyperref[fig:SIP-1]{SIP-1} &  $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ & $ $ \textcolor{green}{ 67.5 }$ $ \\
+\hline 
+9) \hyperref[fig:SL-1]{SL-1} &  $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ & $ $ \textcolor{green}{ 47.5 }$ $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+mytable
+myimage
+\end{document}

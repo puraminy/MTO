@@ -1,0 +1,85 @@
+\documentclass[]{article}
+\usepackage{booktabs} % for professional tables
+\usepackage{makecell}
+\usepackage{multirow,multicol}
+\usepackage{graphicx} 
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{datetime}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage[margin=1in, lmargin=1cm, rmargin=1cm]{geometry}
+
+%opening
+\begin{document}
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{nn:SLP}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{50@123@m-score} & \textbf{50@45@m-score} & \textbf{50@76@m-score} & \textbf{100@123@m-score} & \textbf{100@45@m-score} & \textbf{100@76@m-score} & \textbf{500@123@m-score} & \textbf{500@45@m-score} & \textbf{500@76@m-score} \\
+\hline
+0) \hyperref[fig:SLPI]{SLPI} &  $ @SLPI@50@123@m_score $ & $ @SLPI@50@45@m_score $ & $ @SLPI@50@76@m_score $ & $ @SLPI@100@123@m_score $ & $ @SLPI@100@45@m_score $ & $ @SLPI@100@76@m_score $ & $ @SLPI@500@123@m_score $ & $ @SLPI@500@45@m_score $ & $ @SLPI@500@76@m_score $ \\
+\hline 
+1) \hyperref[fig:SIP]{SIP} &  $ @SIP@50@123@m_score $ & $ @SIP@50@45@m_score $ & $ @SIP@50@76@m_score $ & $ @SIP@100@123@m_score $ & $ @SIP@100@45@m_score $ & $ @SIP@100@76@m_score $ & $ @SIP@500@123@m_score $ & $ @SIP@500@45@m_score $ & $ @SIP@500@76@m_score $ \\
+\hline 
+2) \hyperref[fig:SILPI]{SILPI} &  $ @SILPI@50@123@m_score $ & $ @SILPI@50@45@m_score $ & $ @SILPI@50@76@m_score $ & $ @SILPI@100@123@m_score $ & $ @SILPI@100@45@m_score $ & $ @SILPI@100@76@m_score $ & $ @SILPI@500@123@m_score $ & $ @SILPI@500@45@m_score $ & $ @SILPI@500@76@m_score $ \\
+\hline 
+3) \hyperref[fig:P2]{P2} &  $ @P2@50@123@m_score $ & $ @P2@50@45@m_score $ & $ @P2@50@76@m_score $ & $ @P2@100@123@m_score $ & $ @P2@100@45@m_score $ & $ @P2@100@76@m_score $ & $ @P2@500@123@m_score $ & $ @P2@500@45@m_score $ & $ @P2@500@76@m_score $ \\
+\hline 
+4) \hyperref[fig:SIL]{SIL} &  $ @SIL@50@123@m_score $ & $ @SIL@50@45@m_score $ & $ @SIL@50@76@m_score $ & $ @SIL@100@123@m_score $ & $ @SIL@100@45@m_score $ & $ @SIL@100@76@m_score $ & $ @SIL@500@123@m_score $ & $ @SIL@500@45@m_score $ & $ @SIL@500@76@m_score $ \\
+\hline 
+5) \hyperref[fig:SL]{SL} &  $ @SL@50@123@m_score $ & $ @SL@50@45@m_score $ & $ @SL@50@76@m_score $ & $ @SL@100@123@m_score $ & $ @SL@100@45@m_score $ & $ @SL@100@76@m_score $ & $ @SL@500@123@m_score $ & $ @SL@500@45@m_score $ & $ @SL@500@76@m_score $ \\
+\hline 
+6) \hyperref[fig:SILP]{SILP} &  $ @SILP@50@123@m_score $ & $ @SILP@50@45@m_score $ & $ @SILP@50@76@m_score $ & $ @SILP@100@123@m_score $ & $ @SILP@100@45@m_score $ & $ @SILP@100@76@m_score $ & $ @SILP@500@123@m_score $ & $ @SILP@500@45@m_score $ & $ @SILP@500@76@m_score $ \\
+\hline 
+7) \hyperref[fig:P]{P} &  $ @P@50@123@m_score $ & $ @P@50@45@m_score $ & $ @P@50@76@m_score $ & $ @P@100@123@m_score $ & $ @P@100@45@m_score $ & $ @P@100@76@m_score $ & $ @P@500@123@m_score $ & $ @P@500@45@m_score $ & $ @P@500@76@m_score $ \\
+\hline 
+8) \hyperref[fig:SLP]{SLP} &  $ @SLP@50@123@m_score $ & $ @SLP@50@45@m_score $ & $ @SLP@50@76@m_score $ & $ @SLP@100@123@m_score $ & $ @SLP@100@45@m_score $ & $ @SLP@100@76@m_score $ & $ @SLP@500@123@m_score $ & $ @SLP@500@45@m_score $ & $ @SLP@500@76@m_score $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{nn:SLP}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{50@123@m-score} & \textbf{50@45@m-score} & \textbf{50@76@m-score} & \textbf{100@123@m-score} & \textbf{100@45@m-score} & \textbf{100@76@m-score} & \textbf{500@123@m-score} & \textbf{500@45@m-score} & \textbf{500@76@m-score} \\
+\hline
+0) \hyperref[fig:SLPI]{SLPI} &  $ @SLPI@50@123@m_score $ & $ @SLPI@50@45@m_score $ & $ @SLPI@50@76@m_score $ & $ @SLPI@100@123@m_score $ & $ @SLPI@100@45@m_score $ & $ @SLPI@100@76@m_score $ & $ @SLPI@500@123@m_score $ & $ @SLPI@500@45@m_score $ & $ @SLPI@500@76@m_score $ \\
+\hline 
+1) \hyperref[fig:SIP]{SIP} &  $ @SIP@50@123@m_score $ & $ @SIP@50@45@m_score $ & $ @SIP@50@76@m_score $ & $ @SIP@100@123@m_score $ & $ @SIP@100@45@m_score $ & $ @SIP@100@76@m_score $ & $ @SIP@500@123@m_score $ & $ @SIP@500@45@m_score $ & $ @SIP@500@76@m_score $ \\
+\hline 
+2) \hyperref[fig:SIL]{SIL} &  $ @SIL@50@123@m_score $ & $ @SIL@50@45@m_score $ & $ @SIL@50@76@m_score $ & $ @SIL@100@123@m_score $ & $ @SIL@100@45@m_score $ & $ @SIL@100@76@m_score $ & $ @SIL@500@123@m_score $ & $ @SIL@500@45@m_score $ & $ @SIL@500@76@m_score $ \\
+\hline 
+3) \hyperref[fig:SILPI]{SILPI} &  $ @SILPI@50@123@m_score $ & $ @SILPI@50@45@m_score $ & $ @SILPI@50@76@m_score $ & $ @SILPI@100@123@m_score $ & $ @SILPI@100@45@m_score $ & $ @SILPI@100@76@m_score $ & $ @SILPI@500@123@m_score $ & $ @SILPI@500@45@m_score $ & $ @SILPI@500@76@m_score $ \\
+\hline 
+4) \hyperref[fig:P]{P} &  $ @P@50@123@m_score $ & $ @P@50@45@m_score $ & $ @P@50@76@m_score $ & $ @P@100@123@m_score $ & $ @P@100@45@m_score $ & $ @P@100@76@m_score $ & $ @P@500@123@m_score $ & $ @P@500@45@m_score $ & $ @P@500@76@m_score $ \\
+\hline 
+5) \hyperref[fig:SL]{SL} &  $ @SL@50@123@m_score $ & $ @SL@50@45@m_score $ & $ @SL@50@76@m_score $ & $ @SL@100@123@m_score $ & $ @SL@100@45@m_score $ & $ @SL@100@76@m_score $ & $ @SL@500@123@m_score $ & $ @SL@500@45@m_score $ & $ @SL@500@76@m_score $ \\
+\hline 
+6) \hyperref[fig:SILP]{SILP} &  $ @SILP@50@123@m_score $ & $ @SILP@50@45@m_score $ & $ @SILP@50@76@m_score $ & $ @SILP@100@123@m_score $ & $ @SILP@100@45@m_score $ & $ @SILP@100@76@m_score $ & $ @SILP@500@123@m_score $ & $ @SILP@500@45@m_score $ & $ @SILP@500@76@m_score $ \\
+\hline 
+7) \hyperref[fig:P2]{P2} &  $ @P2@50@123@m_score $ & $ @P2@50@45@m_score $ & $ @P2@50@76@m_score $ & $ @P2@100@123@m_score $ & $ @P2@100@45@m_score $ & $ @P2@100@76@m_score $ & $ @P2@500@123@m_score $ & $ @P2@500@45@m_score $ & $ @P2@500@76@m_score $ \\
+\hline 
+8) \hyperref[fig:SLP]{SLP} &  $ @SLP@50@123@m_score $ & $ @SLP@50@45@m_score $ & $ @SLP@50@76@m_score $ & $ @SLP@100@123@m_score $ & $ @SLP@100@45@m_score $ & $ @SLP@100@76@m_score $ & $ @SLP@500@123@m_score $ & $ @SLP@500@45@m_score $ & $ @SLP@500@76@m_score $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+mytable
+myimage
+\end{document}

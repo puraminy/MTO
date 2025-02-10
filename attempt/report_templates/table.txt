@@ -1,0 +1,32 @@
+		method & model
+		&   \textbf{ ROUGE Score} & \textbf{BertScore} & \textbf{Human} & \textbf{Unique Preds} \\
+		\hline
+		\multirow{3}*{\textbf{map }}  & 
+		T5-v1 &
+		$ @sup@t5-v1@rouge_score $ & $ @sup@t5-v1@bert_score $ &   $ @sup@t5-v1@hscore $  & $ @sup@t5-v1@n_preds$ \\
+		& T5-lm &
+$ @sup@t5-lmb@rouge_score $ & $ @sup@t5-lmb@bert_score $ &   $ @sup@t5-lmb@hscore $ & $ @sup@t5-lmb@n_preds$ \\
+		& T5-base &
+$ @sup@t5-base@rouge_score $ & $ @sup@t5-base@bert_score $ &   $ @sup@t5-base@hscore $  & $ @sup@t5-base@n_preds$ \\
+		
+		\hline
+		\multirow{3}*{\textbf{natural }}  & 
+		T5-v1 &
+		$ @t5-v1@rouge_score $ & $ @t5-v1@bert_score $ &   $ @t5-v1@hscore $  & $ @t5-v1@n_preds$ \\
+		& T5-lm &
+		$ @t5-lmb@rouge_score $ & $ @t5-lmb@bert_score $ &   $ @t5-lmb@hscore $ & $ @t5-lmb@n_preds$ \\
+		& T5-base &
+		$ @t5-base@rouge_score $ & $ @t5-base@bert_score $ &   $ @t5-base@hscore $  & $ @t5-base@n_preds$ \\
+
+		\hline
+
+		\multirow{3}*{\textbf{natural\_x }}  & 
+		T5-v1 &
+		$ @t5-v1@rouge_score $ & $ @t5-v1@bert_score $ &   $ @t5-v1@hscore $  & $ @t5-v1@n_preds$ \\
+		& T5-lm &
+		$ @t5-lmb@rouge_score $ & $ @t5-lmb@bert_score $ &   $ @t5-lmb@hscore $ & $ @t5-lmb@n_preds$ \\
+		& T5-base &
+		$ @t5-base@rouge_score $ & $ @t5-base@bert_score $ &   $ @t5-base@hscore $  & $ @t5-base@n_preds$ \\
+
+		\hline
+

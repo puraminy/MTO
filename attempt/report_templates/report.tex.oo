@@ -1,0 +1,51 @@
+\documentclass[]{article}
+\usepackage{booktabs} % for professional tables
+\usepackage{makecell}
+\usepackage{multirow,multicol}
+\usepackage{graphicx} 
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{datetime}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage[margin=1in, lmargin=1cm, rmargin=1cm]{geometry}
+
+%opening
+\begin{document}
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{oo:SLP}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{50-123} & \textbf{50-45} & \textbf{50-76} & \textbf{avg} & \textbf{500-123} & \textbf{500-45} & \textbf{500-76} & \textbf{avg} \\
+\hline
+0) \hyperref[fig:SLPI]{SLPI} &  $  $ \textcolor{blue}{ 68.5 }$  $ & $  $ \textcolor{blue}{ 62.5 }$  $ & $  $ \textcolor{blue}{ 71.4 }$  $ & $  $ \textcolor{blue}{ 82.9 }$  $ & $  $ \textcolor{blue}{ 83.4 }$  $ & $  $ \textcolor{blue}{ 83.3 }$  $ \\
+\hline 
+1) \hyperref[fig:SIP]{SIP} &  $  $ \textcolor{blue}{ 60.4 }$  $ & $  $ \textcolor{blue}{ 54.4 }$  $ & $  $ \textcolor{blue}{ 62.4 }$  $ & $  $ \textcolor{blue}{ 82.8 }$  $ & $  $ \textcolor{blue}{ 81.1 }$  $ & $  $ \textcolor{blue}{ 82.4 }$  $ \\
+\hline 
+2) \hyperref[fig:SILPI]{SILPI} &  $  $ \textcolor{blue}{ 77.1 }$  $ & $  $ \textcolor{blue}{ 75.1 }$  $ & $  $ \textcolor{blue}{ 77.9 }$  $ & $  $ \textcolor{blue}{ 82.5 }$  $ & $  $ \textcolor{blue}{ 81.7 }$  $ & $  $ \textcolor{blue}{ 82.1 }$  $ \\
+\hline 
+3) \hyperref[fig:P2]{P2} &  $  $ \textcolor{blue}{ 67.8 }$  $ & $  $ \textcolor{blue}{ 59.2 }$  $ & $  $ \textcolor{blue}{ 61.5 }$  $ & $  $ \textcolor{blue}{ 82.3 }$  $ & $  $ \textcolor{blue}{ 82.6 }$  $ & $  $ \textcolor{blue}{ 74.2 }$  $ \\
+\hline 
+4) \hyperref[fig:SIL]{SIL} &  $  $ \textcolor{blue}{ 73.8 }$  $ & $  $ \textcolor{blue}{ 74.1 }$  $ & $  $ \textcolor{blue}{ 77.9 }$  $ & $  $ \textcolor{blue}{ 81.6 }$  $ & $  $ \textcolor{blue}{ 79.8 }$  $ & $  $ \textcolor{blue}{ 82.3 }$  $ \\
+\hline 
+5) \hyperref[fig:SL]{SL} &  $  $ \textcolor{blue}{ 53.9 }$  $ & $  $ \textcolor{blue}{ 59.2 }$  $ & $  $ \textcolor{blue}{ 61.7 }$  $ & $  $ \textcolor{blue}{ 74.3 }$  $ & $  $ \textcolor{blue}{ 76.1 }$  $ & $  $ \textcolor{blue}{ 76.7 }$  $ \\
+\hline 
+6) \hyperref[fig:SILP]{SILP} &  $  $ \textcolor{blue}{ 73.8 }$  $ & $  $ \textcolor{blue}{ 77.2 }$  $ & $  $ \textcolor{blue}{ 57.9 }$  $ & $  $ \textcolor{blue}{ 69.0 }$  $ & $  $ \textcolor{blue}{ 79.7 }$  $ & $  $ \textcolor{blue}{ 74.4 }$  $ \\
+\hline 
+7) \hyperref[fig:P]{P} &  $  $ \textcolor{blue}{ 58.2 }$  $ & $  $ \textcolor{blue}{ 58.9 }$  $ & $  $ \textcolor{blue}{ 71.1 }$  $ & $  $ \textcolor{blue}{ 68.6 }$  $ & $  $ \textcolor{blue}{ 82.7 }$  $ & $  $ \textcolor{blue}{ 82.1 }$  $ \\
+\hline 
+8) \hyperref[fig:SLP]{SLP} &  $  $ \textcolor{blue}{ 48.4 }$  $ & $  $ \textcolor{blue}{ 50.9 }$  $ & $  $ \textcolor{blue}{ 61.3 }$  $ & $  $ \textcolor{blue}{ 40.2 }$  $ & $  $ \textcolor{blue}{ 59.3 }$  $ & $  $ \textcolor{blue}{ 46.1 }$  $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+mytable
+myimage
+\end{document}

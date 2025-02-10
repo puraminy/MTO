@@ -1,0 +1,103 @@
+\documentclass[]{article}
+\usepackage{booktabs} % for professional tables
+\usepackage{makecell}
+\usepackage{multirow,multicol}
+\usepackage{graphicx} 
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{datetime}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage[margin=1in, lmargin=1cm, rmargin=1cm]{geometry}
+
+%opening
+\begin{document}
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{500:P}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{50@123@m-score} & \textbf{50@45@m-score} & \textbf{50@76@m-score} & \textbf{100@123@m-score} & \textbf{100@45@m-score} & \textbf{100@76@m-score} & \textbf{500@123@m-score} & \textbf{500@45@m-score} & \textbf{500@76@m-score} \\
+\hline
+PI &  $ @PI@50@123@m_score $ & $ @PI@50@45@m_score $ & $ @PI@50@76@m_score $ & $ @PI@100@123@m_score $ & $ @PI@100@45@m_score $ & $ @PI@100@76@m_score $ & $ @PI@500@123@m_score $ & $ @PI@500@45@m_score $ & $ @PI@500@76@m_score $ \\
+\hline 
+PI &  $ @P@50@123@m_score $ & $ @P@50@45@m_score $ & $ @P@50@76@m_score $ & $ @P@100@123@m_score $ & $ @P@100@45@m_score $ & $ @P@100@76@m_score $ & $ @P@500@123@m_score $ & $ @P@500@45@m_score $ & $ @P@500@76@m_score $ \\
+\hline 
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+                    \begin{table*}[h]
+                        \label{table:1}
+                        \caption{500 P 500 123}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|}
+                        \hline
+                         tn  & \textbf{PI} & \textbf{P} \\
+\hline
+ \textbf{50} \\
+\hline
+ \textbf{100} \\
+\hline
+ \textbf{500} \\
+\hline
+\\
+\hline
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+                    \begin{table*}[h]
+                        \label{table:2}
+                        \caption{500 P 500 123}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                        method &  \textbf{stsb} & \textbf{qqp} & \textbf{qnli} & \textbf{mrpc} & \textbf{rte} & \textbf{mnli} & \textbf{cola} & \textbf{sst2} & avg. \\
+\hline
+0) \hyperref[fig:PI]{PI} &  $ @PI@stsb@m_score $ & $ @PI@qqp@m_score $ & $ @PI@qnli@m_score $ & $ @PI@mrpc@m_score $ & $ @PI@rte@m_score $ & $ @PI@mnli@m_score $ & $ @PI@cola@m_score $ & $ @PI@sst2@m_score $ & $ @PI@500@123@m_score $ \\
+1) \hyperref[fig:P]{P} &  $ @P@stsb@m_score $ & $ @P@qqp@m_score $ & $ @P@qnli@m_score $ & $ @P@mrpc@m_score $ & $ @P@rte@m_score $ & $ @P@mnli@m_score $ & $ @P@cola@m_score $ & $ @P@sst2@m_score $ & $ @P@500@123@m_score $ \\
+\hline 
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+                    \begin{table*}[h]
+                        \label{table:3}
+                        \caption{500 P 500 123}
+                        \begin{adjustbox}{width=1\textwidth}
+                        \begin{tabular}{|r|r|r|r|r|r|r|r|r|}
+                        \hline
+                         tn  & \textbf{cola} & \textbf{mnli} & \textbf{mrpc} & \textbf{qnli} & \textbf{qqp} & \textbf{rte} & \textbf{sst2} & \textbf{stsb} \\
+\hline
+ \textbf{v1} & $67.00_{0.00}$ & $37.60_{0.00}$ & $67.20_{0.00}$ & $89.00_{0.00}$ & $89.80_{0.00}$ & $62.60_{0.00}$ & $88.60_{0.00}$ & $88.40_{0.00}$ \\
+\hline
+ \textbf{base} & $67.00_{0.00}$ & $37.60_{0.00}$ & $67.20_{0.00}$ & $89.00_{0.00}$ & $89.80_{0.00}$ & $62.60_{0.00}$ & $88.60_{0.00}$ & $88.40_{0.00}$ \\
+\hline
+ \textbf{base-01} & $67.00_{0.00}$ & $75.20_{0.00}$ & $67.20_{0.00}$ & $91.40_{0.00}$ & $89.00_{0.00}$ & $53.20_{0.00}$ & $65.80_{0.00}$ & $88.20_{0.00}$ \\
+\hline
+ \textbf{newlabel} \\
+\hline
+\\
+\hline
+
+                        \end{tabular}
+                        \end{adjustbox}
+                    \end{table*}
+                    
+
+
+myimage
+\end{document}
