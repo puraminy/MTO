@@ -1397,7 +1397,6 @@ class PTModel(PeftModel):
 
         inputs_embeds = self.base_model.shared(input_ids) if inputs_embeds is None else inputs_embeds
         mylogs.bp("fwd")
-        breakpoint()
         if self.prompt_tuning or self.attn_prompt_tuning:
             input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
                     input_ids, inputs_embeds, 

@@ -32,7 +32,7 @@ from third_party.models import PTModel, AttentivePromptEncoder
 from transformers import Trainer #, TrainingArguments, DataCollatorForSeq2Seq
 
 from transformers import AutoModelForSeq2SeqLM
-from peft import PromptTuningConfig, get_peft_model
+from peft import PromptTuningConfig, get_peft_model, PeftConfig
 
 
 from dataclasses import dataclass, field
@@ -1450,7 +1450,7 @@ def train(**kwargs):
     # Load a model config
     config = PromptTuningConfig(
         task_type="SEQ_2_SEQ_LM",
-        num_virtual_tokens=1,  # Define number of soft prompt tokens
+        num_virtual_tokens=10,  # Define number of soft prompt tokens
         tokenizer_name_or_path=model_name_or_path
     )
 
