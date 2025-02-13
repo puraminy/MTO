@@ -31,7 +31,6 @@ from data import AutoPostProcessor
 from third_party.models import PTModel, AttentivePromptEncoder 
 from transformers import Trainer #, TrainingArguments, DataCollatorForSeq2Seq
 
-from transformers import AutoModelForSeq2SeqLM
 from peft import PromptTuningConfig, get_peft_model, PeftConfig
 
 
@@ -45,7 +44,6 @@ from rouge import Rouge
 from utils import get_adapter_config
 from attempt.utils.utils import combine_x,combine_y
 from transformers.trainer_utils import is_main_process, get_last_checkpoint
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from transformers import (
     MT5TokenizerFast,
     T5TokenizerFast,
@@ -98,6 +96,48 @@ logger = logging.getLogger(__name__)
 global_scores = []
 global_y_labels = []
 global_x_labels = []
+
+from transformers import AutoModel, AutoModelForSeq2SeqLM, AutoModelForSequenceClassification, \
+    AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoTokenizer
+
+def load_base_model(model_name):
+    # Define task-based model categories
+    seq2seq_models = ["t5", "bart", "mbart", "mt5", "m2m100", "blenderbot"]
+    causal_lm_models = ["gpt", "opt", "bloom", "llama", "mistral", "gemma"]
+    seq_cls_models = ["bert", "roberta", "albert", "electra", "deberta", "xlm-roberta", "fnet"]
+    token_cls_models = ["bert", "roberta", "xlm-roberta", "deberta"]  # Models that support token classification
+    question_ans_models = ["bert", "roberta", "xlm-roberta", "deberta", "albert"]
+    
+    # Determine model type
+    model_name_lower = model_name.lower()
+
+    if any(model_name_lower.startswith(m) for m in seq2seq_models):
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        task_type = "SEQ_2_SEQ_LM"
+
+    elif any(model_name_lower.startswith(m) for m in causal_lm_models):
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        task_type = "CAUSAL_LM"
+
+    elif any(model_name_lower.startswith(m) for m in seq_cls_models):
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        task_type = "SEQ_CLS"
+
+    elif any(model_name_lower.startswith(m) for m in token_cls_models):
+        model = AutoModelForTokenClassification.from_pretrained(model_name)
+        task_type = "TOKEN_CLS"
+
+    elif any(model_name_lower.startswith(m) for m in question_ans_models):
+        model = AutoModelForQuestionAnswering.from_pretrained(model_name)
+        task_type = "QUESTION_ANS"
+
+    else:
+        # Default case: Load base AutoModel (feature extraction)
+        model = AutoModel.from_pretrained(model_name)
+        task_type = "FEATURE_EXTRACTION"
+
+    return model, task_type
+
 
 from scipy.stats import entropy
 
@@ -1447,9 +1487,11 @@ def train(**kwargs):
         anneal_rate = (model_args.temperature - model_args.anneal_min)/(anneal_steps) 
     else:
         anneal_rate = model_args.anneal_rate
+    # Load the base model
+    base_model, task_type = load_base_model(model_name_or_path) 
     # Load a model config
     config = PromptTuningConfig(
-        task_type="SEQ_2_SEQ_LM",
+        task_type=task_type,
         num_virtual_tokens=10,  # Define number of soft prompt tokens
         tokenizer_name_or_path=model_name_or_path
     )
@@ -1515,10 +1557,8 @@ def train(**kwargs):
     config.learn_target_prompts = model_args.learn_target_prompts
 
     
-    # Load the base model
-    base_model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
-    config.d_model = base_model.config.d_model
 
+    config.d_model = base_model.config.d_model
     adapter_args.freeze_model = kwargs.get("freeze_model", True)
     adapter_config = get_adapter_config(
         adapter_args, data_args, training_args, config)
