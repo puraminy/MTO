@@ -1428,9 +1428,7 @@ def train(**kwargs):
     load_path = kwargs.setdefault("load_path", "")
     if not model_name_or_path.startswith("/") and load_path:
         model_name_or_path = op.join(load_path, model_name_or_path)
-    if "mt5" in model_name_or_path:
-        tokenizer = MT5TokenizerFast.from_pretrained(model_name_or_path)
-    elif "pars" in model_name_or_path:
+    if "pars" in model_name_or_path:
         tokenizer = T5TokenizerFast.from_pretrained(model_name_or_path)
     else:
         tokenizer = AutoTokenizer.from_pretrained(
