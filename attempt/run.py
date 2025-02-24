@@ -222,7 +222,7 @@ def cli():
             ignore_unknown_options=True,
             allow_extra_args=True,))
 
-@click.argument('cfgpat')
+@click.argument('cfg_path')
 @click.option(
     "--experiment",
     "-exp",
@@ -404,7 +404,7 @@ def cli():
     help="The directory to save all experiments"
 )
 @click.pass_context
-def run(ctx, cfgpat, experiment, exp_conf, break_point, preview, exp_vars, 
+def run(ctx, cfg_path, experiment, exp_conf, break_point, preview, exp_vars, 
         log_var, last_var, main_vars, 
         debug, version, trial, skip, save_conf, rem, repeat, 
         label, deep_check, merge, not_copy_prev_exp, 
@@ -428,11 +428,11 @@ def run(ctx, cfgpat, experiment, exp_conf, break_point, preview, exp_vars,
        log_path = mylogs.logPath 
    if not log_path.startswith("/"):
        log_path = os.path.join(mylogs.logPath, log_path)
-   if exp_conf or cfgpat:
-        print("Experiment pattern:", cfgpat)
+   if exp_conf or cfg_path:
+        print("Experiment pattern:", cfg_path)
         cur_path = os.getcwd()
         print("Cur path:", cur_path)
-        confs = glob.glob(f"*{cfgpat}*")
+        confs = glob.glob(f"*{cfg_path}*")
         print("Experiment matched confs:", confs)
         if not exp_conf and confs:
             exp_conf = confs[0]
@@ -1660,7 +1660,7 @@ def train(**kwargs):
        else:
           router_dict = torch.load(dpath, map_location=device)
           attend_num = len(router_dict)
-          model.encoder.router = torch.nn.Parameter(data=torch.empty((
+          attn_pt.router = torch.nn.Parameter(data=torch.empty((
                 attend_num,
                 attend_num 
           ), device=device).uniform_(0, 0)) #-1e-3, 1e-3
@@ -1669,9 +1669,9 @@ def train(**kwargs):
                    with torch.no_grad():
                        v[v > 0] = 1.
                        v[v <= 0] = 0.
-               model.encoder.router[i].data.copy_(v.data)
-          model.encoder.router.to(device=device)
-          init_router = model.encoder.router.detach().clone()
+               attn_pt.router[i].data.copy_(v.data)
+          attn_pt.router.to(device=device)
+          init_router = attn_pt.router.detach().clone()
 
     mylogs.bp("penc")
     prompts_prefix = kwargs.setdefault("prompts_prefix", None) 
@@ -2306,9 +2306,9 @@ def train(**kwargs):
     image_folder = op.join(training_args.output_dir,"router_images")
     Path(image_folder).mkdir(parents=True, exist_ok = True)
     save_router_image = kwargs.get("save_router_image", False)
-    wb_callback = WBCallback(save_path = image_folder, 
+    wb_callback = WBCallback(save_path = image_folder, module=attn_pt, 
             save_router_image=save_router_image)
-    anneal_callback = AnnealCallback() 
+    anneal_callback = AnnealCallback(module=attn_pt) 
     ptlr_callback = PTLearningRateCallback()
     callbacks = []
     # optimizer = AdamW(model.prompt_encoder.parameters(), lr=1e-4)  # Optimize only soft prompts
@@ -2316,39 +2316,42 @@ def train(**kwargs):
        callbacks = [ptlr_callback, wb_callback, anneal_callback]
     if kwargs.use_optimizer: #TODO remove condition and the else part 
         # Initialize our Trainer
-        trainer = Seq2SeqTrainer(
+        # trainer = Seq2SeqTrainer(
+        trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset= eval_ds,
-            data_info=data_info,
+     #       data_info=data_info,
             tokenizer=tokenizer,
             data_collator=data_collator,
             compute_metrics=compute_metrics if training_args.predict_with_generate else None,
-            multi_task_compute_metrics=compute_metrics_fn,
-            evaluation_metrics=task_metric,
-            save_checkpoint = kwargs.setdefault("save_checkpoint", False),
-            shared=model_args.shared_attn,
+     #       multi_task_compute_metrics=compute_metrics_fn,
+     #       evaluation_metrics=task_metric,
+     #       save_checkpoint = kwargs.setdefault("save_checkpoint", False),
+     #       shared=model_args.shared_attn,
             callbacks = callbacks, 
-            shuffle = trainer_shuffle,
+     #       shuffle = trainer_shuffle,
             optimizers=(optim, scheduler)
         )
     else:
-        trainer = Seq2SeqTrainer(
+        # trainer = Seq2SeqTrainer(
+        trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset=eval_ds,
-            data_info=data_info,
+    #        data_info=data_info,
             tokenizer=tokenizer,
             data_collator=data_collator,
             callbacks = callbacks, 
-            shuffle = trainer_shuffle,
-            save_checkpoint = kwargs.setdefault("save_checkpoint", False),
+      #      shuffle = trainer_shuffle,
+      #      save_checkpoint = kwargs.setdefault("save_checkpoint", False),
             compute_metrics=compute_metrics if training_args.predict_with_generate else None,
-            evaluation_metrics=task_metric,
-            multi_task_compute_metrics=compute_metrics_fn,
-            shared=model_args.shared_attn)
+      #      evaluation_metrics=task_metric,
+      #      multi_task_compute_metrics=compute_metrics_fn,
+      #      shared=model_args.shared_attn
+        )
 
     # Exit program if user wants to check some settings 
     if preview and preview != "one" and preview != "run" and preview != "test":
@@ -2373,7 +2376,7 @@ def train(**kwargs):
             if model_args.load_layer_norm and "layer_norm_bias.pt" in load_path: 
                 trainer.model.update_layer_norm_weights(load_path)
         if lsp:
-            for encoder in model.prompt_encoders:
+            for encoder in attn_pt.prompt_encoders:
                 plen = encoder.length
                 encoder.load(load_path, 
                         prefix = saved_prompts_prefix,
@@ -2386,7 +2389,7 @@ def train(**kwargs):
               assert Path(dpath).is_file(), dpath + " doesn't exist to load model"
               router_dict = torch.load(dpath, map_location=device)
               attend_num = len(router_dict)
-              model.encoder.router = torch.nn.Parameter(data=torch.empty((
+              attn_pt.router = torch.nn.Parameter(data=torch.empty((
                     attend_num,
                     attend_num 
               ), device=device).uniform_(0, 0)) #-1e-3, 1e-3
@@ -2395,7 +2398,7 @@ def train(**kwargs):
                        with torch.no_grad():
                            v[v > 0] = 1.
                            v[v <= 0] = 0.
-                   model.encoder.router[i].data.copy_(v.data)
+                   attn_pt.router[i].data.copy_(v.data)
     # Training
     if training_args.do_train:
         checkpoint = None
@@ -2427,10 +2430,10 @@ def train(**kwargs):
             performance_metrics.update({"total_time in minutes ": total_time})
 
         # Load best model
-        if trainer.best_prompt_checkpoint is not None:
-            best_chk_path = trainer.best_prompt_checkpoint
-            lsp = kwargs.setdefault("load_source_prompts", False)
-            load_model(best_chk_path, lsp)
+        #if trainer.best_prompt_checkpoint is not None:
+        #    best_chk_path = trainer.best_prompt_checkpoint
+        #    lsp = kwargs.setdefault("load_source_prompts", False)
+        #    load_model(best_chk_path, lsp)
 
         # Save prompts
         if adapter_args.prompt_tuning:
@@ -2544,7 +2547,7 @@ def train(**kwargs):
     # Test
     mylogs.bp("do_test")
     reval = not training_args.do_train 
-    slen = len([e for e in model.prompt_encoders if e.is_source and not e.is_private]) 
+    slen = len([e for e in attn_pt.prompt_encoders if e.is_source and not e.is_private]) 
     exp_info["slen"] = slen
     load_model_dir = kwargs.get("load_model_dir", training_args.output_dir)
     use_test_config = kwargs.get("use_test_config", False)
@@ -2788,15 +2791,19 @@ def train(**kwargs):
         def evaluate_test(task, test_dataset, save_to, ds_name, auto_task, 
                 gen_conf = {}, use_cache=False):
             mylogs.bp("ttt")
+            attn_pt.gen_conf = gen_conf
             if use_cache and task in no_mask_preds:
                 predictions, labels, metrics = no_mask_preds[task] 
             else:
                 predictions, labels, metrics = trainer.predict(
-                    gen_conf = gen_conf,
+                    # gen_conf = gen_conf,
                     test_dataset=test_dataset,
-                    max_length=data_args.test_max_target_length, 
-                    num_beams=data_args.num_beams,
-                    metric_key_prefix="test", task=task)
+                    #max_length=data_args.test_max_target_length, 
+                    #num_beams=data_args.num_beams,
+                    metric_key_prefix="test", 
+                    #task=task
+                )
+            predicted_token_ids = predictions[1].argmax(axis=-1)
 
             if adapter_args.prompt_tuning and gen_conf["mask_type"].startswith("no-mask"):
                 no_mask_preds[task] = (predictions, labels, metrics)
@@ -2863,7 +2870,7 @@ def train(**kwargs):
                 df.at[i, "query"] = extra["query"]  
                 df.at[i, "resp"] =  extra["resp"]  
                 mylogs.bp("decode")
-                pred = tokenizer.decode(predictions[i], 
+                pred = tokenizer.decode(predicted_token_ids[i], 
                         skip_special_tokens=skip_specials) 
                 if skip_specials:
                     pred = re.sub(r'<.*?>','',pred)
@@ -2923,14 +2930,14 @@ def train(**kwargs):
                 square=False, annot=True, vmin=None, vmax=None, mask_zeros=False):
             if not model_args.attn_tuning:
                 return
-            targets = model.encoder.target_encoders_idx
+            targets = attn_pt.target_encoders_idx
             mylogs.bp("save_image")
-            y_labels = [model.encoder.prompt_names[i] for i in targets]
+            y_labels = [attn_pt.prompt_names[i] for i in targets]
             y_labels = [y.replace("tar-","") for y in y_labels]
             y_labels = [p.split("-")[-1] for p in y_labels]
             if not p_labels:
                 p_labels = []
-                for pl in model.encoder.prompt_names:
+                for pl in attn_pt.prompt_names:
                     if not "tar" in pl and not "input" in pl:
                         pl = pl.replace("source_for_","") 
                         pl = pl.replace("source_","") 
@@ -3013,7 +3020,7 @@ def train(**kwargs):
         if masking_list:
             gen_masks_list = []
         if adapter_args.prompt_tuning:
-            prompt_names = model.encoder.prompt_names
+            prompt_names = attn_pt.prompt_names
         for masking in masking_list:
             gen_masks = {}
             if not "-" in masking:
@@ -3027,7 +3034,7 @@ def train(**kwargs):
             gen_masks["no-mask_"+mask_type] = None
             if num_masks == 0: 
                 if mask_type == "remove" or mask_type == "keeponly":
-                    router = model.encoder.router
+                    router = attn_pt.router
                     positive_indices_per_row = [torch.nonzero(row > 0)[:, -1] 
                             for row in router]
                     max_length_index = max(range(len(positive_indices_per_row)), 
@@ -3040,13 +3047,13 @@ def train(**kwargs):
             col = 0
             if add_or_attend_input:
                 mylogs.bp("keepinp")
-                mask = model.encoder.make_attn_mask(col, 1, mask_type + "_input")
+                mask = attn_pt.make_attn_mask(col, 1, mask_type + "_input")
                 mkey = str(col) + "-" + mask_type + "-input"
                 gen_masks[mkey] = mask
             if num_masked_prompts > 0 and use_source_prompts:
                 for rm in range(mask_num_start, mask_num_start + num_masks):
                     col = rm + 1
-                    mask = model.encoder.make_attn_mask(col, num_masked_prompts, mask_type)
+                    mask = attn_pt.make_attn_mask(col, num_masked_prompts, mask_type)
                     mkey = str(col) + "-" + mask_type + "-" \
                             + prompt_names[col].replace("source_","").replace("-","_")
                     gen_masks[mkey] = mask
@@ -3055,19 +3062,19 @@ def train(**kwargs):
                     and not model_args.compose_method in ["mcat","mwavg"]
                     and num_source_prompts > 1):
                     col += 1
-                    mask = model.encoder.make_attn_mask(col, 1, mask_type + "_source")
+                    mask = attn_pt.make_attn_mask(col, 1, mask_type + "_source")
                     mylogs.bp("keepsrc")
                     mkey = str(col) + "-" + mask_type + "-source"
                     gen_masks[mkey] = mask
                 if use_private_prompts:
                     col += 1
-                    mask = model.encoder.make_attn_mask(col, 1, mask_type + "_private")
+                    mask = attn_pt.make_attn_mask(col, 1, mask_type + "_private")
                     mkey = str(col) + "-" + mask_type + "-private"
                     gen_masks[mkey] = mask
                 if (add_target_prompt 
                     and not model_args.compose_method in ["mcat","mwavg"]):
                     col += 1
-                    mask = model.encoder.make_attn_mask(col, 1, mask_type + "_target")
+                    mask = attn_pt.make_attn_mask(col, 1, mask_type + "_target")
                     mkey = str(col) + "-" + mask_type + "-target" 
                     gen_masks[mkey] = mask
             gen_masks_list.append(gen_masks)
@@ -3100,7 +3107,7 @@ def train(**kwargs):
                 df, scores, golds, preds = evaluate_test(task, test_dataset, save_to, 
                         ds_name, auto_task)
         else:
-            attend_num =len(model.encoder.prompt_encoders) + 1 # one for input
+            attend_num =len(attn_pt.prompt_encoders) + 1 # one for input
             gen_combs = itertools.product(gnm, gcmm, 
                     gen_thresh_min, gen_thresh_max, gen_ntp)
             mylogs.bp("genm")
@@ -3144,9 +3151,9 @@ def train(**kwargs):
                         eval_folder = os.path.join(exp_folder, eval_folder_name)
                         Path(eval_folder).mkdir(parents=True, exist_ok=True)
 
-                        model.encoder.attn_scores = torch.zeros(
+                        attn_pt.attn_scores = torch.zeros(
                             (attend_num, attend_num), device=device) 
-                        model.encoder.attn_mask_learned = torch.zeros(
+                        attn_pt.attn_mask_learned = torch.zeros(
                             (attend_num, attend_num), device=device) 
                         counter = 0
                         total_score = 0
@@ -3178,21 +3185,21 @@ def train(**kwargs):
                         if not test_key in task_scores[rm]:
                             task_scores[rm][test_key] = {}
                         if adapter_args.prompt_tuning:
-                            targets = model.encoder.target_encoders_idx
-                            y_labels = [model.encoder.prompt_names[i] for i in targets]
+                            targets = attn_pt.target_encoders_idx
+                            y_labels = [attn_pt.prompt_names[i] for i in targets]
                             y_labels = [y.replace("tar-","") for y in y_labels]
                             if mask is not None:
                                 mask_matrix = mask.index_select(0, targets)
-                            orig_mask = model.encoder.attn_mask_orig 
+                            orig_mask = attn_pt.attn_mask_orig 
                             orig_mask_matrix = orig_mask.index_select(0, targets)
                         for idx, (task, test_dataset) in enumerate(test_datasets.items()):
                             auto_task = auto_tasks[task]
                             mylogs.bp("attn_mask")
-                            gen_conf["attn_mask"] = model.encoder.attn_mask_orig 
+                            gen_conf["attn_mask"] = attn_pt.attn_mask_orig 
                             if mask is not None: 
                                mylogs.bp("testmask")
                                if not gen_ignore_target: 
-                                   tmask = model.encoder.make_attn_mask(1,1,"keep_target")
+                                   tmask = attn_pt.make_attn_mask(1,1,"keep_target")
                                    mask = mask | tmask 
                                if use_masked_attn_scores < 0:
                                    gen_conf["attn_mask"] = mask 
@@ -3267,11 +3274,11 @@ def train(**kwargs):
 #################
                         mylogs.bp("pic")
                         if mask is None:
-                            full_attn_mat = model.encoder.attn_scores
+                            full_attn_mat = attn_pt.attn_scores
                         mean_score = total_score / counter
                         if adapter_args.prompt_tuning:
-                            targets = model.encoder.target_encoders_idx
-                            router_scores = model.encoder.router.index_select(0, targets)
+                            targets = attn_pt.target_encoders_idx
+                            router_scores = attn_pt.router.index_select(0, targets)
                             tlen = router_scores.size(0)
                             rsim = torch.eye(tlen)
                             cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
@@ -3301,7 +3308,7 @@ def train(**kwargs):
                                         {"init_router":init_router_scores}, spec=rm)
 
                             mylogs.bp("nusp")
-                            attn_mat = model.encoder.attn_scores
+                            attn_mat = attn_pt.attn_scores
                             if full_attn_mat is None:
                                 attn_mat = full_attn_mat
                             scores_matrix = attn_mat.index_select(0,targets)
@@ -3345,9 +3352,9 @@ def train(**kwargs):
                             if mask is not None:
                                 mask_matrix = mask.index_select(0, targets)
                             else:
-                                learned_mask = model.encoder.attn_mask_learned 
+                                learned_mask = attn_pt.attn_mask_learned 
                                 if len(torch.nonzero(learned_mask)) < 1:
-                                    learned_mask = model.encoder.attn_mask_orig
+                                    learned_mask = attn_pt.attn_mask_orig
                                 mask_matrix = learned_mask.index_select(0, targets)
                             if rm != "no-mask":
                                 mylogs.bp("keepinp")
@@ -3453,9 +3460,9 @@ def train(**kwargs):
 
 
         if model_args.attn_tuning:
-            targets = model.encoder.target_encoders_idx
-            scores_matrix = model.encoder.attn_scores.index_select(0, targets)
-            router_scores = model.encoder.router.index_select(0, targets)
+            targets = attn_pt.target_encoders_idx
+            scores_matrix = attn_pt.attn_scores.index_select(0, targets)
+            router_scores = attn_pt.router.index_select(0, targets)
             _tag = kwargs.setdefault("tag",[])
             #if diff_args:
             #    for k,v in diff_args["values_changed"].items():
@@ -3467,15 +3474,15 @@ def train(**kwargs):
                 del _main_vars["task_name"]
 
             global_scores.append(scores_matrix)
-            targets = model.encoder.target_encoders_idx
-            y_labels = [model.encoder.prompt_names[i] for i in targets]
+            targets = attn_pt.target_encoders_idx
+            y_labels = [attn_pt.prompt_names[i] for i in targets]
             y_labels = [y.replace("tar-","") for y in y_labels]
             global_y_labels.extend(y_labels)
-            global_x_labels = model.encoder.prompt_names 
+            global_x_labels = attn_pt.prompt_names 
             for score in [scores_matrix]: #[router_scores]
                 img_buf = WBCallback.save_image(scores=[score], 
                    y_labels=y_labels,
-                   x_labels=model.encoder.prompt_names, 
+                   x_labels=attn_pt.prompt_names, 
                    title = str(kwargs.expid) + str(_main_vars) \
                             + "_" + model_args.attn_method,
                     img_h=6.5 if multi_tasking else 2.5,

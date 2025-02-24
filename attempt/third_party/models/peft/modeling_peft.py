@@ -192,7 +192,7 @@ def batched_index_select(inp, dim, index):
 
 # === Custom Attentive Prompt Embedding === #
 class AttentivePromptEncoder(torch.nn.Module):
-    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, attn_method="linear", shared_attn=False, attend_target=False, temperature=2000, learned_temperature=False):
+    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, attn_method="rb", shared_attn=False, attend_target=False, temperature=2000, learned_temperature=False):
         super().__init__()
 
         self.embed_tokens = embed_tokens
@@ -269,7 +269,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.padding_pos = config.padding_pos
         self.attn_tuning = attn_tuning
         self.mul_prefix_emb = mul_prefix_emb
-        self.attn_method = attn_method
+        self.attn_method = config.attn_method
         self.model_dim = model_dim
         self.out_dim = config.prompt_out_dim if config.prompt_out_dim > 0 else model_dim
         self.shared_attn = shared_attn
@@ -446,10 +446,6 @@ class AttentivePromptEncoder(torch.nn.Module):
 #            prompt_dim * self.model_dim 
 #        )).uniform_(-bound, bound))
 #
-
-    @property
-    def prompt_encoders(self):
-        return self.encoder.prompt_encoders
 
     @property
     def prompt_encoders_num(self):
@@ -795,10 +791,11 @@ class AttentivePromptEncoder(torch.nn.Module):
             attn_scores[:,:,-1] = attn_scores[:,:,-1]+ 2
 
         mylogs.bp("tk1")
-        mylogs.bp(task + "1")
-        if not self.training:
-            mylogs.bp("tk2")
-            mylogs.bp(task + "2")
+        if task:
+            mylogs.bp(task + "1")
+            if not self.training:
+                mylogs.bp("tk2")
+                mylogs.bp(task + "2")
 
         if not "pool" in compose_method and not "lin" in compose_method:
             num_select = num_attend_to

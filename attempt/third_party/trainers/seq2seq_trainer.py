@@ -194,7 +194,7 @@ class Seq2SeqTrainer(Seq2SeqTrainer, BaseTrainer):
             "temperature": 1.0,
             "num_return_sequences":1, 
             "repetition_penalty":5.5,
-            "task": inputs["task"] if "task" in inputs else "all",
+        #    "task": inputs["task"] if "task" in inputs else "all",
         #    "bad_words_ids": bad_words_ids
         }
         gen_kwargs2 = {

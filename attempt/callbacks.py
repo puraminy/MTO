@@ -64,15 +64,17 @@ class PTLearningRateCallback(TrainerCallback):
         logger.info(logs)
 
 class AnnealCallback(TrainerCallback):
+    def __init__(self, module, **kwargs):
+        self.module = module 
+        super().__init__(**kwargs)
+
     def on_log(self, args, state, control, logs = None, **kwargs):
-        model = kwargs.pop("model", None)
-        e = model.encoder
+        e = self.module 
         logs["temperature:"] = '{:3}'.format('{}'.format(e.temperature)) 
         logs["threshold:"] = '{:3}'.format('{}'.format(e.sel_thresh)) 
 
     def on_step_begin(self, args, state, control, **kwargs):
-        model = kwargs.pop("model", None)
-        e = model.encoder
+        e = self.module 
         e.anneal(state.global_step)
         # wandb.log({"temperature": e.temperature})
         #mylogs.winfo("router","%s: %s  (%s %s > %s)", state.global_step, 
@@ -80,8 +82,9 @@ class AnnealCallback(TrainerCallback):
 
 class WBCallback(WandbCallback):
     cur_epoch = -1
-    def __init__(self, save_path, save_router_image=False, **kwargs):
+    def __init__(self, save_path, save_router_image=False, module = None, **kwargs):
         self.save_path = save_path
+        self.module = module
         self.save_router_image = save_router_image
         super().__init__()
 
@@ -178,22 +181,22 @@ class WBCallback(WandbCallback):
         if not self.save_router_image:
             return
         mylogs.bp("save_router")
-        model = kwargs.pop("model", None)
-        self.save_router(model, state)
+        module = self.module # kwargs.pop("model", None)
+        self.save_router(module, state)
 
-    def save_router(self, model, state):
-        targets = model.encoder.target_encoders_idx
-        y_labels = [model.encoder.prompt_names[i] for i in targets]
+    def save_router(self, module, state):
+        targets = module.target_encoders_idx
+        y_labels = [module.prompt_names[i] for i in targets]
         y_labels = [y.replace("tar-","") for y in y_labels]
         p_labels = []
-        for pl in model.encoder.prompt_names:
+        for pl in module.prompt_names:
             if not "tar" in pl and not "input" in pl:
                 pl = pl.replace("source_for_","") 
                 pl = pl.replace("source_","") 
                 pl = pl.replace("superglue-","") 
                 pl = pl.replace("com","src") 
                 p_labels.append(pl)
-        router_scores = model.encoder.router.index_select(0, targets)
+        router_scores = module.router.index_select(0, targets)
         square = False
         x_labels = y_labels
         if not square:
@@ -218,5 +221,5 @@ class WBCallback(WandbCallback):
         mylogs.bp("wand")
         epoch = int(epoch)
         if state.global_step % 50 == 1 or state.global_step == 2:
-            self.save_router(model, state)
+            self.save_router(self.module, state)
 
