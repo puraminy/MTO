@@ -446,6 +446,75 @@ class AttentivePromptEncoder(torch.nn.Module):
 #            prompt_dim * self.model_dim 
 #        )).uniform_(-bound, bound))
 #
+
+    @property
+    def prompt_encoders(self):
+        return self.encoder.prompt_encoders
+
+    @property
+    def prompt_encoders_num(self):
+        return len(self.encoder.prompt_encoders)
+    
+    def load_encoders(self, load_dir = None, load_source_prompts = False, prefix=""):
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        prefix = "pt_" + prefix if not self.attn_tuning else "att_" + prefix
+        prefix = prefix.strip("_")
+        for encoder in self.prompt_encoders:
+            if not load_source_prompts and encoder.is_source:
+                continue
+            encoder.load(load_dir, prefix=prefix)
+            encoder.to(device)
+
+    def store_encoders(self, output_dir = None, 
+            prompts_only=False, 
+            prompts_and_router_only=False,
+            save_source_prompts = False, prompts_to_save=None, prefix="", 
+            router_prefix="", save_router=False):
+        prefix = prefix.strip("_")
+        if prompts_to_save:
+            for encoder in self.prompt_encoders:
+                if not save_source_prompts and encoder.is_source:
+                    continue
+                if (prompts_to_save != "all" 
+                    and not encoder.name in prompts_to_save):
+                    continue
+                encoder.save(output_dir, prefix=prefix)
+        if prompts_only: return
+        attn_tuning = self.attn_tuning
+        mylogs.bp("router")
+        if attn_tuning is True and save_router:
+            router_dict = {}
+            for i, n in enumerate(self.encoder.prompt_names):
+                router_dict[n] = self.encoder.router[i]
+            torch.save(router_dict, os.path.join(
+                        output_dir, router_prefix +  "_router.pt"))
+
+        if prompts_and_router_only: return
+        for name, param in self.named_parameters():
+            # Save attention and layer norm weights.
+            if attn_tuning is True and "encoder.attn_Wa.weight" == name:
+                attn_weights_params = param
+                torch.save(attn_weights_params, os.path.join(
+                    output_dir, "attn_Wa_weights.pt"))
+            if attn_tuning is True and "encoder.attn_W_down.weight" == name:
+                attn_weights_params = param
+                torch.save(attn_weights_params, os.path.join(
+                    output_dir, "attn_W_down.pt"))
+            if attn_tuning is True and "encoder.attn_W_up.weight" == name:
+                attn_weights_params = param
+                torch.save(attn_weights_params, os.path.join(
+                    output_dir, "attn_W_up.pt"))
+            if attn_tuning is True and "encoder.layer_norm.weight" == name:
+                attn_weights_params = param
+                torch.save(attn_weights_params, os.path.join(
+                    output_dir, "layer_norm_weight.pt"))
+            if attn_tuning is True and "encoder.layer_norm.bias" == name:
+                attn_weights_params = param
+                torch.save(attn_weights_params, os.path.join(
+                    output_dir, "layer_norm_bias.pt"))
+
+
+
     def make_attn_mask(self, index=0, num_masked_prompts = 1, mask_type="rand"):
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         attend_num = len(self.prompt_encoders) + 1 # one for input

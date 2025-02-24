@@ -111,23 +111,23 @@ def load_base_model(model_name):
     # Determine model type
     model_name_lower = model_name.lower()
 
-    if any(model_name_lower.startswith(m) for m in seq2seq_models):
+    if any(m in model_name_lower for m in seq2seq_models):
         model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         task_type = "SEQ_2_SEQ_LM"
 
-    elif any(model_name_lower.startswith(m) for m in causal_lm_models):
+    elif any(m in model_name_lower for m in causal_lm_models):
         model = AutoModelForCausalLM.from_pretrained(model_name)
         task_type = "CAUSAL_LM"
 
-    elif any(model_name_lower.startswith(m) for m in seq_cls_models):
+    elif any(m in model_name_lower for m in seq_cls_models):
         model = AutoModelForSequenceClassification.from_pretrained(model_name)
         task_type = "SEQ_CLS"
 
-    elif any(model_name_lower.startswith(m) for m in token_cls_models):
+    elif any(m in model_name_lower for m in token_cls_models):
         model = AutoModelForTokenClassification.from_pretrained(model_name)
         task_type = "TOKEN_CLS"
 
-    elif any(model_name_lower.startswith(m) for m in question_ans_models):
+    elif any(m in model_name_lower for m in question_ans_models):
         model = AutoModelForQuestionAnswering.from_pretrained(model_name)
         task_type = "QUESTION_ANS"
 
@@ -2449,7 +2449,7 @@ def train(**kwargs):
                     str(data_args.max_train_samples)
             if not prompts_to_save:
                 prompts_to_save = "all" if save_all_prompts else None
-            model.store_encoders(output_dir = training_args.output_dir,
+            attn_pt.store_encoders(output_dir = training_args.output_dir,
                                  prompts_and_router_only=model_args.attn_tuning, 
                                  save_source_prompts = ssp, 
                                  prompts_to_save = prompts_to_save, 
@@ -2462,7 +2462,7 @@ def train(**kwargs):
             mylogs.bp("store")
             if save_to_prompts_dir or save_router:
                 Path(prompts_dir).mkdir(parents = True, exist_ok=True)
-                model.store_encoders(output_dir = prompts_dir, 
+                attn_pt.store_encoders(output_dir = prompts_dir, 
                         prompts_and_router_only=model_args.attn_tuning, 
                         prompts_to_save = prompts_to_save or "all", 
                         save_source_prompts = ssp,
@@ -3530,7 +3530,7 @@ def train(**kwargs):
                 mylogs.bp("store")
                 if save_to_prompts_dir:
                     Path(op.join(new_dir, "prompts")).mkdir(parents = True, exist_ok=True)
-                    model.store_encoders(output_dir = prompts_dir, prompts_only=True)
+                    attn_pt.store_encoders(output_dir = prompts_dir, prompts_only=True)
 
             # after saving prompts, we will remove unnecessary checkpoint dir.
             try:
