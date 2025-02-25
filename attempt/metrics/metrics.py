@@ -14,14 +14,14 @@ import functools
 from pandas.plotting import table
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr 
-import torch
+# import torch
 import wandb
 from rouge import Rouge
 from attempt.mylogs import *
 import attempt.mylogs as mylogs
 from attempt.myutil import df_to_image
 from attempt.maps import REL_TO_PHRASE
-if not colab:
+if False: #not colab:
     from sentence_transformers import SentenceTransformer, util
 from tqdm import tqdm
 import re

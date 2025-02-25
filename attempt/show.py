@@ -44,7 +44,7 @@ from PIL import ImageDraw
 from PIL import ImageChops
 #import sklearn
 #import sklearn.metrics
-#import attempt.metrics.metrics as mets
+import attempt.metrics.metrics as mets
 
 def trim_white_borders(image):
     # Convert the image to RGB (if not already in that mode)
@@ -879,6 +879,7 @@ def calc_metrics(main_df):
             tdf = main_df[cond]
             preds = tdf["pred_text1"]
             preds = preds.fillna(0)
+            task = task.split("_")[-1]
             if len(preds) == 0:
                 continue
             golds = tdf["target_text"]
@@ -886,6 +887,8 @@ def calc_metrics(main_df):
             metrics_list = []
             for mstr in task_metric:
                 metric = getattr(mets, mstr)
+                if mstr != "rouge":
+                    breakpoint()
                 met = metric(preds, golds)
                 metrics_list.append(met)
             if met: 
@@ -990,8 +993,8 @@ def show_df(df, summary=False):
     #    df["cossim_decoder"] ="" 
     #    df["cossim_encoder"] ="" 
 
-    #if not "m_score" in df:
-    #    calc_metrics(df)
+    if True: #not "m_score" in df:
+        calc_metrics(df)
     #if "test_f1" in df:
     #    df["m_score"] = df["test_f1"]
     if not summary:
