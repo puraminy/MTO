@@ -21,6 +21,9 @@ class Anneal:
         elif anneal_dir == -1:
             self.start_val = temperature
             self.anneal_point = anneal_min
+        elif anneal_dir == 0:
+            self.start_val = temperature
+            self.anneal_point = temperature
 
         self.cur_val = self.start_val
         self.anneal_dir = anneal_dir
@@ -31,6 +34,8 @@ class Anneal:
         return self
 
     def anneal(self, i_step):
+        if self.anneal_dir == 0:
+            return self.cur_val
         if self.anneal_dir == -1 and self.cur_val <= self.anneal_point:
             return self.anneal_point
         if self.anneal_dir == 1 and self.cur_val >= self.anneal_point:
@@ -192,7 +197,7 @@ def batched_index_select(inp, dim, index):
 
 # === Custom Attentive Prompt Embedding === #
 class AttentivePromptEncoder(torch.nn.Module):
-    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, attn_method="rb", shared_attn=False, attend_target=False, temperature=2000, learned_temperature=False):
+    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, attn_method="rb", shared_attn=False, attend_target=False, learned_temperature=False):
         super().__init__()
 
         self.embed_tokens = embed_tokens
@@ -232,7 +237,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.anneal_dir = config.anneal_dir
         self.anneal_rate = config.anneal_rate
         self.anneal_type = config.anneal_type
-        self.temperature = temperature
+        self.temperature = config.temperature
 
         self.anneal_router = Anneal(self.temperature, 
                 anneal_dir = self.anneal_dir, 
@@ -388,7 +393,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                                 k += 1
                     i += 1
                 mylogs.bp("bias")
-            self.router = nn.Parameter(data=router)
+            self.router = nn.Parameter(data=router, requires_grad=True)
 
         self.attn_mask_orig = self.attn_mask.clone()
         self.source_encoders_idx = torch.tensor(src_list, device=device)
@@ -1453,6 +1458,30 @@ class PTModel(PeftModel):
             self.attentive_prompt_encoder = AttentivePromptEncoder(config, adapter_config)
         # self.base_model.dropout = nn.Dropout(config.dropout_rate)
 
+    def get_input_embeddings_for(self, base_model, input_ids, inputs_embeds=None):
+        if inputs_embeds is not None:
+            return inputs_embeds
+        
+        # Check for T5-like models (shared embeddings)
+        if hasattr(base_model, "shared"):
+            inputs_embeds = base_model.shared(input_ids)
+        
+        # Check for GPT-like models (wte embeddings)
+        elif hasattr(base_model, "wte"):
+            inputs_embeds = base_model.wte(input_ids)
+        
+        # Check for BERT-like models (embeddings layer)
+        elif hasattr(base_model, "embeddings"):
+            inputs_embeds = base_model.embeddings(input_ids)
+        
+        # Fallback: Use the base model's `get_input_embeddings` method
+        else:
+            embedding_layer = base_model.get_input_embeddings()
+            inputs_embeds = embedding_layer(input_ids)
+        
+        return inputs_embeds
+
+
     def forward(self, input_ids, 
         inputs_embeds=None, 
         attention_mask=None, 
@@ -1460,8 +1489,8 @@ class PTModel(PeftModel):
         task_ids=None,
         task=None,
         **kwargs):
-
-        inputs_embeds = self.base_model.shared(input_ids) if inputs_embeds is None else inputs_embeds
+        embedding_layer = self.base_model.get_input_embeddings()
+        inputs_embeds = embedding_layer(input_ids)
         mylogs.bp("fwd")
         if self.prompt_tuning or self.attn_prompt_tuning:
             input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(

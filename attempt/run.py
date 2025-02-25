@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from options import AdapterTrainingArguments, ModelArguments, DataTrainingArguments, TrainingArguments
 from third_party.trainers import Seq2SeqTrainer
 from data import TaskDataCollatorForSeq2Seq
+from transformers import DataCollatorForSeq2Seq
 from data import AutoTask
 import re
 from rouge import Rouge
@@ -100,7 +101,7 @@ global_x_labels = []
 from transformers import AutoModel, AutoModelForSeq2SeqLM, AutoModelForSequenceClassification, \
     AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoTokenizer
 
-def load_base_model(model_name):
+def load_base_model(model_name, pretPath=""):
     # Define task-based model categories
     seq2seq_models = ["t5", "bart", "mbart", "mt5", "m2m100", "blenderbot"]
     causal_lm_models = ["gpt", "opt", "bloom", "llama", "mistral", "gemma"]
@@ -136,11 +137,83 @@ def load_base_model(model_name):
         model = AutoModel.from_pretrained(model_name)
         task_type = "FEATURE_EXTRACTION"
 
-    return model, task_type
+    new_path = model_name
+    if not Path(model_name).exists():
+        new_path = os.path.join(pretPath, model_name.split("/")[-1])
+        model.save_pretrained(new_path)
 
+    return model, task_type, new_path
+
+from transformers import AutoConfig
+
+def get_model_dimension(model_name_or_path):
+    config = AutoConfig.from_pretrained(model_name_or_path)
+
+    # Check for common attributes that represent the model's hidden size
+    if hasattr(config, "d_model"):  # For models like T5, BART, Marian
+        return config.d_model
+    elif hasattr(config, "hidden_size"):  # For models like GPT-2, BERT, RoBERTa
+        return config.hidden_size
+    elif hasattr(config, "n_embd"):  # For GPT-2 specifically
+        return config.n_embd
+    elif hasattr(config, "dim"):  # For some other architectures
+        return config.dim
+    else:
+        raise AttributeError(f"Could not determine model dimension for {model_name_or_path}. Config: {config}")
+
+
+from transformers import (
+    DataCollatorForSeq2Seq,
+    DataCollatorForLanguageModeling,
+    DataCollatorWithPadding,
+    DataCollatorForTokenClassification,
+    default_data_collator,
+)
+
+def get_data_collator(task_type, tokenizer, data_args, training_args, label_pad_token_id=-100):
+    """
+    Returns the appropriate data collator based on the task type.
+
+    Args:
+        task_type (str): The type of task (e.g., "SEQ_2_SEQ_LM", "CAUSAL_LM", "SEQ_CLS", etc.).
+        tokenizer (PreTrainedTokenizer): The tokenizer for the model.
+        data_args: Arguments related to data processing.
+        training_args: Arguments related to training.
+        label_pad_token_id (int): The token ID used for padding labels (default: -100).
+
+    Returns:
+        The appropriate data collator for the task.
+    """
+    if data_args.pad_to_max_length:
+        return default_data_collator
+    else:
+        if task_type == "SEQ_2_SEQ_LM":
+            return DataCollatorForSeq2Seq(
+                tokenizer,
+                label_pad_token_id=label_pad_token_id,
+                pad_to_multiple_of=8 if training_args.fp16 else None,
+            )
+        elif task_type == "CAUSAL_LM":
+            return DataCollatorForLanguageModeling(
+                tokenizer,
+                mlm=False,  # Set to True if you're using masked language modeling
+                pad_to_multiple_of=8 if training_args.fp16 else None,
+            )
+        elif task_type == "SEQ_CLS":
+            return DataCollatorWithPadding(
+                tokenizer,
+                pad_to_multiple_of=8 if training_args.fp16 else None,
+            )
+        elif task_type == "TOKEN_CLS":
+            return DataCollatorForTokenClassification(
+                tokenizer,
+                pad_to_multiple_of=8 if training_args.fp16 else None,
+            )
+        else:
+            # Default case: Use default data collator
+            return default_data_collator
 
 from scipy.stats import entropy
-
 
 def task_similarity(dif_ij, final_i, final_j, alpha=1.0):
     # Compute the sigmoid transformation of the difference in scores
@@ -1438,6 +1511,9 @@ def train(**kwargs):
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+        if not Path(model_name_or_path).exists():
+            new_path = os.path.join(mylogs.pretPath, model_name_or_path.split("/")[-1])
+            tokenizer.save_pretrained(new_path)
 
     # Set seed before initializing model.
     tasks = data_args.task_name
@@ -1486,7 +1562,7 @@ def train(**kwargs):
     else:
         anneal_rate = model_args.anneal_rate
     # Load the base model
-    base_model, task_type = load_base_model(model_name_or_path) 
+    base_model, task_type, model_name_or_path=load_base_model(model_name_or_path,mylogs.pretPath) 
     # Load a model config
     config = PromptTuningConfig(
         task_type=task_type,
@@ -1554,9 +1630,7 @@ def train(**kwargs):
     config.learn_source_prompts = learn_source_prompts
     config.learn_target_prompts = model_args.learn_target_prompts
 
-    
-
-    config.d_model = base_model.config.d_model
+    config.d_model = get_model_dimension(model_name_or_path)
     adapter_args.freeze_model = kwargs.get("freeze_model", True)
     adapter_config = get_adapter_config(
         adapter_args, data_args, training_args, config)
@@ -1696,7 +1770,8 @@ def train(**kwargs):
     if adapter_args.prompt_tuning:
         added = add_specials(tokenizer)
         logger.info("%s tokens was addded", added)
-        model.resize_token_embeddings(len(tokenizer))
+        new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
+        model.resize_token_embeddings(new_vocab_size)
         # mmmmmmmmmmmmm Add target prompts
         mylogs.bp("encoders")
         prompts = {}
@@ -1827,7 +1902,8 @@ def train(**kwargs):
         # If two tasks use similar prompts they recieve the output of same encoders
         if prompt_sharing == "shared_prompts":
             encoders_prompts = task_prompts
-        model.resize_token_embeddings(len(tokenizer))
+        new_vocab_size = (len(tokenizer) + 7) // 8 * 8  
+        model.resize_token_embeddings(new_vocab_size)
         load_prompts = kwargs.setdefault("load_prompts", False) 
         if training_args.do_train:
             load_prompts = False
@@ -1933,7 +2009,8 @@ def train(**kwargs):
             source_prompts, 
             source_prompt_length,
             target_prompt_length, tasks = tasks) 
-        model.resize_token_embeddings(len(tokenizer))
+        new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
+        model.resize_token_embeddings(new_vocab_size)
 
     if log_var and preview == "encoders":
         mylogs.plog.info("======== Number of encoders: %s", len(prompt_encoders))
@@ -1979,6 +2056,11 @@ def train(**kwargs):
                         p.requires_grad = True
                         requires_grad_encoders.append(encoder.name)
 
+    if attn_pt and model_args.learn_attention:
+       for name, param in attn_pt.named_parameters():
+           if name == "router": 
+              param.requires_grad = True
+
     rgrad = len([p for p in model.parameters() if p.requires_grad])
     nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
@@ -2004,7 +2086,88 @@ def train(**kwargs):
     padding = "max_length" if data_args.pad_to_max_length else False
     ########### rrrrrr
     hit_count = kwargs.setdefault("hc", 3)
-    def preprocess_function(examples, max_target_length, task_id=None):
+
+    def preprocess_function(examples, max_target_length, task_type, task_id=None):
+        mylogs.bp("data")
+
+        def clean_target_label(target):
+            cleaned_target = re.sub(r"<.*?>", "", target).strip()
+            return cleaned_target
+
+        # Tokenize the input text (common for all models)
+        model_inputs = tokenizer(
+            examples['source'],
+            max_length=data_args.max_source_length,
+            padding=padding,
+            truncation=True
+        )
+
+        if preview == "data":
+            print("source:", examples["source"][:hit_count])
+            print("target:", examples.get("target", [])[:hit_count])
+
+        # Sequence-to-Sequence Processing
+        if task_type == "SEQ_2_SEQ_LM":
+            mylogs.bp("encode")
+            with tokenizer.as_target_tokenizer():
+                labels = tokenizer(
+                    examples['target'],
+                    max_length=max_target_length,
+                    padding=padding,
+                    truncation=True
+                )
+
+            if padding == "max_length" and data_args.ignore_pad_token_for_loss:
+                labels["input_ids"] = [
+                    [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
+                ]
+
+            model_inputs["labels"] = labels["input_ids"]
+
+        # Causal LM (Decoder-only models like GPT)
+        elif task_type == "CAUSAL_LM":
+            model_inputs["labels"] = model_inputs["input_ids"].copy()
+
+        # Sequence Classification
+        elif task_type == "SEQ_CLS":
+            cleaned_targets = [clean_target_label(target) for target in examples["target"]]
+            # Get unique labels and assign unique IDs
+            unique_labels = list(set(cleaned_targets))  # Get distinct labels
+            label_to_id = {label: idx for idx, label in enumerate(unique_labels)} 
+            assert len(label_to_id) == 2, label_to_id
+
+            # Convert cleaned labels to numeric IDs
+            labels = [label_to_id[label] for label in cleaned_targets]
+            model_inputs["labels"] = labels 
+
+        # Token Classification (NER, POS tagging)
+        elif task_type == "TOKEN_CLS":
+            model_inputs["labels"] = examples["target"]
+
+        # Question Answering (Start/End positions)
+        elif task_type == "QUESTION_ANS":
+            model_inputs["start_positions"] = examples["start_positions"]
+            model_inputs["end_positions"] = examples["end_positions"]
+
+        # Feature Extraction (No labels)
+        elif task_type == "FEATURE_EXTRACTION":
+            pass  # Just return tokenized input
+
+        # Handling extra fields
+        if "task_ids" in examples.get("extra_fields", {}):
+            model_inputs["task_ids"] = examples["extra_fields"]["task_ids"]
+
+        mylogs.bp("train_test_data")
+        model_inputs["extra_fields"] = examples.get("extra_fields", {})
+
+        if task_id is not None:
+            model_inputs["task_ids"] = [task_id for _ in examples.get("extra_fields", [{}])]
+
+        return model_inputs
+
+
+
+    def preprocess_function2(examples, max_target_length, task_id=None):
         mylogs.bp("data")
         model_inputs = tokenizer(examples['source'], max_length=data_args.max_source_length,
                                  padding=padding, truncation=True)
@@ -2095,6 +2258,7 @@ def train(**kwargs):
         for i, train_dataset in enumerate(train_datasets):
             train_datasets[i] = train_datasets[i].map(
                 functools.partial(preprocess_function,
+                                  task_type = task_type,
                                   max_target_length=max_target_lengths[i]
                                   #mycode adding task ids
                                   ,task_id=i
@@ -2133,6 +2297,7 @@ def train(**kwargs):
         for k, name in enumerate(eval_datasets):
             eval_datasets[name] = eval_datasets[name].map(
                 functools.partial(preprocess_function,
+                                  task_type = task_type,
                                   max_target_length=max_target_lengths[k]),
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
@@ -2150,10 +2315,12 @@ def train(**kwargs):
     if data_args.pad_to_max_length:
         data_collator = default_data_collator
     else:
-        data_collator = TaskDataCollatorForSeq2Seq(
+        data_collator = get_data_collator(
+            task_type,
             tokenizer,
-            label_pad_token_id=label_pad_token_id,
-            pad_to_multiple_of=8 if training_args.fp16 else None,
+            data_args=data_args,
+            training_args = training_args,
+            label_pad_token_id=label_pad_token_id
         )
     eval_metrics = [AutoTask.get(dataset_name, 
                     dataset_config_name, task_args=task_args, tokenizer=tokenizer).metric
@@ -2191,6 +2358,9 @@ def train(**kwargs):
     prompt_params = []
     mylogs.bp("lr")
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
+        for name, param in attn_pt.named_parameters():
+           if name == "router": 
+              attn_params.append(param)
         for name, param in model.named_parameters():
             if (name == "encoder.attn_W_up.weight" 
                 or name == "encoder.attn_W_down.weight" 
@@ -2318,7 +2488,7 @@ def train(**kwargs):
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
-            model=model,
+            model=base_model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset= eval_ds,
@@ -2337,7 +2507,7 @@ def train(**kwargs):
     else:
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
-            model=model,
+            model=base_model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset=eval_ds,
@@ -2594,6 +2764,7 @@ def train(**kwargs):
         for k, name in enumerate(test_datasets):
             test_datasets[name] = test_datasets[name].map(
                 functools.partial(preprocess_function,
+                                  task_type = task_type,
                                   max_target_length=max_target_lengths[k]),
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
