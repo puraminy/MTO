@@ -887,18 +887,18 @@ def calc_metrics(main_df):
             metrics_list = []
             for mstr in task_metric:
                 metric = getattr(mets, mstr)
-                if mstr != "rouge":
-                    breakpoint()
+                if mstr == "rouge":
+                    continue
                 met = metric(preds, golds)
                 metrics_list.append(met)
             if met: 
                 v = list(met.values())[0]
-                main_df.loc[cond, "m_score"] = round(float(v),1)
+                main_df.loc[cond, "rouge_score"] = round(float(v),1)
             #for met in metrics_list:
             #    for k,v in met.items():
             #        infos.append(exp + ":" + task + ":" + str(k) + ":" + str(v))
             #        infos.append("---------------------------------------------")
-    return infos
+    return main_df
 
 
 class MyDF:
@@ -994,7 +994,7 @@ def show_df(df, summary=False):
     #    df["cossim_encoder"] ="" 
 
     if True: #not "m_score" in df:
-        calc_metrics(df)
+        df = calc_metrics(df)
     #if "test_f1" in df:
     #    df["m_score"] = df["test_f1"]
     if not summary:
@@ -1133,7 +1133,7 @@ def show_df(df, summary=False):
     settings = load_obj("settings", "gtasks", {})
 
     rels = [] # df["prefix"].unique()
-    use_rouge = True # settings["use_rouge"] if "use_rouge" in settings else False 
+    use_rouge = False #True # settings["use_rouge"] if "use_rouge" in settings else False 
     if use_rouge:
         score_cols = ['rouge_score','depth_score','perp_score','num_preds'] 
     else:
