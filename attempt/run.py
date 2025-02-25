@@ -1638,8 +1638,10 @@ def train(**kwargs):
     # Wrap model with PEFT
 
     # Initialize custom model with attentive prompt embedding
-    model = PTModel(base_model, config, adapter_config)
-    attn_pt = model.attentive_prompt_encoder
+    attn_pt = None
+    if config.prompt_tuning or config.attn_tuning:
+        attn_pt = AttentivePromptEncoder(config, adapter_config)
+    model = PTModel(base_model, config, adapter_config, attn_pt)
 
     #model = T5ForConditionalGeneration.from_pretrained(
     #    model_name_or_path,
@@ -2024,8 +2026,8 @@ def train(**kwargs):
 
     mylogs.bp("freeze")
     mylogs.bp("rgrad")
-    rgrad = len([p for p in model.parameters() if p.requires_grad])
-    nrgrad = len([p for p in model.parameters() if not p.requires_grad])
+    rgrad = len([p for p in base_model.parameters() if p.requires_grad])
+    nrgrad = len([p for p in base_model.parameters() if not p.requires_grad])
     mylogs.plog.info("Before freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
     model = modify_model_after_init(
         model, training_args, adapter_args, adapter_config)
@@ -2061,8 +2063,8 @@ def train(**kwargs):
            if name == "router": 
               param.requires_grad = True
 
-    rgrad = len([p for p in model.parameters() if p.requires_grad])
-    nrgrad = len([p for p in model.parameters() if not p.requires_grad])
+    rgrad = len([p for p in base_model.parameters() if p.requires_grad])
+    nrgrad = len([p for p in base_model.parameters() if not p.requires_grad])
     exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
     mylogs.minfo("After freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
     # mylogs.minfo("Encoders require grad: %s",requires_grad_encoders)
@@ -2107,11 +2109,14 @@ def train(**kwargs):
             print("target:", examples.get("target", [])[:hit_count])
 
         # Sequence-to-Sequence Processing
+        cleaned_targets = examples["target"]
+        if task_type != "SEQ_2_SEQ_LM":
+            cleaned_targets = [clean_target_label(target) for target in examples["target"]]
         if task_type == "SEQ_2_SEQ_LM":
             mylogs.bp("encode")
             with tokenizer.as_target_tokenizer():
                 labels = tokenizer(
-                    examples['target'],
+                    cleaned_targets,
                     max_length=max_target_length,
                     padding=padding,
                     truncation=True
@@ -2126,15 +2131,26 @@ def train(**kwargs):
 
         # Causal LM (Decoder-only models like GPT)
         elif task_type == "CAUSAL_LM":
-            model_inputs["labels"] = model_inputs["input_ids"].copy()
+            mylogs.bp("encode")
+            with tokenizer.as_target_tokenizer():
+                labels = tokenizer(
+                    cleaned_targets,
+                    padding=True,
+                    truncation=True
+                )
+
+            if padding == "max_length" and data_args.ignore_pad_token_for_loss:
+                labels["input_ids"] = [
+                    [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
+                ]
+
+            model_inputs["labels"] = labels["input_ids"]
 
         # Sequence Classification
         elif task_type == "SEQ_CLS":
-            cleaned_targets = [clean_target_label(target) for target in examples["target"]]
             # Get unique labels and assign unique IDs
             unique_labels = list(set(cleaned_targets))  # Get distinct labels
             label_to_id = {label: idx for idx, label in enumerate(unique_labels)} 
-            assert len(label_to_id) == 2, label_to_id
 
             # Convert cleaned labels to numeric IDs
             labels = [label_to_id[label] for label in cleaned_targets]
@@ -2142,7 +2158,7 @@ def train(**kwargs):
 
         # Token Classification (NER, POS tagging)
         elif task_type == "TOKEN_CLS":
-            model_inputs["labels"] = examples["target"]
+            model_inputs["labels"] = cleaned_targets
 
         # Question Answering (Start/End positions)
         elif task_type == "QUESTION_ANS":
@@ -2488,14 +2504,14 @@ def train(**kwargs):
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
-            model=base_model,
+            model=model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset= eval_ds,
      #       data_info=data_info,
             tokenizer=tokenizer,
             data_collator=data_collator,
-            compute_metrics=compute_metrics if training_args.predict_with_generate else None,
+     #       compute_metrics=compute_metrics if training_args.predict_with_generate else None,
      #       multi_task_compute_metrics=compute_metrics_fn,
      #       evaluation_metrics=task_metric,
      #       save_checkpoint = kwargs.setdefault("save_checkpoint", False),
@@ -2507,7 +2523,7 @@ def train(**kwargs):
     else:
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
-            model=base_model,
+            model=model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset=eval_ds,
@@ -2517,7 +2533,7 @@ def train(**kwargs):
             callbacks = callbacks, 
       #      shuffle = trainer_shuffle,
       #      save_checkpoint = kwargs.setdefault("save_checkpoint", False),
-            compute_metrics=compute_metrics if training_args.predict_with_generate else None,
+      #      compute_metrics=compute_metrics if training_args.predict_with_generate else None,
       #      evaluation_metrics=task_metric,
       #      multi_task_compute_metrics=compute_metrics_fn,
       #      shared=model_args.shared_attn

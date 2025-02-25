@@ -1448,39 +1448,12 @@ class AttentivePromptEncoder(torch.nn.Module):
         return input_ids, att_mask
 
 class PTModel(PeftModel):
-    def __init__(self, base_model, config, adapter_config):
+    def __init__(self, base_model, config, adapter_config, attn_pt=None):
         super().__init__(base_model, config)
         self.prompt_tuning = config.prompt_tuning
         self.attn_prompt_tuning = config.attn_tuning
         self.base_model = base_model
-        self.attentive_prompt_encoder = None 
-        if self.prompt_tuning or self.attn_prompt_tuning:
-            self.attentive_prompt_encoder = AttentivePromptEncoder(config, adapter_config)
-        # self.base_model.dropout = nn.Dropout(config.dropout_rate)
-
-    def get_input_embeddings_for(self, base_model, input_ids, inputs_embeds=None):
-        if inputs_embeds is not None:
-            return inputs_embeds
-        
-        # Check for T5-like models (shared embeddings)
-        if hasattr(base_model, "shared"):
-            inputs_embeds = base_model.shared(input_ids)
-        
-        # Check for GPT-like models (wte embeddings)
-        elif hasattr(base_model, "wte"):
-            inputs_embeds = base_model.wte(input_ids)
-        
-        # Check for BERT-like models (embeddings layer)
-        elif hasattr(base_model, "embeddings"):
-            inputs_embeds = base_model.embeddings(input_ids)
-        
-        # Fallback: Use the base model's `get_input_embeddings` method
-        else:
-            embedding_layer = base_model.get_input_embeddings()
-            inputs_embeds = embedding_layer(input_ids)
-        
-        return inputs_embeds
-
+        self.attentive_prompt_encoder = attn_pt 
 
     def forward(self, input_ids, 
         inputs_embeds=None, 
