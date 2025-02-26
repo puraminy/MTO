@@ -28,7 +28,7 @@ from pathlib import Path
 import glob
 from data import AutoPostProcessor
 # from third_party.models import T5Config, T5ForConditionalGeneration
-from third_party.models import PTModel, AttentivePromptEncoder 
+from third_party.models import PTModel, AttentivePromptEncoder, AttnConfig, CustomModelWrapper 
 from transformers import Trainer #, TrainingArguments, DataCollatorForSeq2Seq
 
 from peft import PromptTuningConfig, get_peft_model, PeftConfig
@@ -146,9 +146,7 @@ def load_base_model(model_name, pretPath=""):
 
 from transformers import AutoConfig
 
-def get_model_dimension(model_name_or_path):
-    config = AutoConfig.from_pretrained(model_name_or_path)
-
+def get_model_dimension(config):
     # Check for common attributes that represent the model's hidden size
     if hasattr(config, "d_model"):  # For models like T5, BART, Marian
         return config.d_model
@@ -1565,13 +1563,15 @@ def train(**kwargs):
     else:
         anneal_rate = model_args.anneal_rate
     # Load the base model
-    base_model, task_type, model_name_or_path=load_base_model(model_name_or_path,mylogs.pretPath) 
+    model, task_type, model_name_or_path=load_base_model(model_name_or_path,mylogs.pretPath) 
+    base_config = AutoConfig.from_pretrained(model_name_or_path)
     # Load a model config
-    config = PromptTuningConfig(
+    ptun_config = PromptTuningConfig(
         task_type=task_type,
         num_virtual_tokens=10,  # Define number of soft prompt tokens
         tokenizer_name_or_path=model_name_or_path
     )
+    config = AttnConfig()
 
     config.train_task_adapters = adapter_args.train_task_adapters
     config.prefix_tuning = adapter_args.prefix_tuning
@@ -1633,7 +1633,7 @@ def train(**kwargs):
     config.learn_source_prompts = learn_source_prompts
     config.learn_target_prompts = model_args.learn_target_prompts
 
-    config.d_model = get_model_dimension(model_name_or_path)
+    config.d_model = get_model_dimension(base_config)
     adapter_args.freeze_model = kwargs.get("freeze_model", True)
     adapter_config = get_adapter_config(
         adapter_args, data_args, training_args, config)
@@ -1644,7 +1644,7 @@ def train(**kwargs):
     attn_pt = None
     if config.prompt_tuning or config.attn_tuning:
         attn_pt = AttentivePromptEncoder(config, adapter_config)
-    model = PTModel(base_model, config, adapter_config, attn_pt)
+    wrapped_model = CustomModelWrapper(model, attn_pt)
 
     #model = T5ForConditionalGeneration.from_pretrained(
     #    model_name_or_path,
@@ -2029,8 +2029,8 @@ def train(**kwargs):
 
     mylogs.bp("freeze")
     mylogs.bp("rgrad")
-    rgrad = len([p for p in base_model.parameters() if p.requires_grad])
-    nrgrad = len([p for p in base_model.parameters() if not p.requires_grad])
+    rgrad = len([p for p in model.parameters() if p.requires_grad])
+    nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     mylogs.plog.info("Before freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
     model = modify_model_after_init(
         model, training_args, adapter_args, adapter_config)
@@ -2066,8 +2066,8 @@ def train(**kwargs):
            if name == "router": 
               param.requires_grad = True
 
-    rgrad = len([p for p in base_model.parameters() if p.requires_grad])
-    nrgrad = len([p for p in base_model.parameters() if not p.requires_grad])
+    rgrad = len([p for p in model.parameters() if p.requires_grad])
+    nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
     mylogs.minfo("After freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
     # mylogs.minfo("Encoders require grad: %s",requires_grad_encoders)
@@ -2507,7 +2507,7 @@ def train(**kwargs):
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
-            model=model,
+            model=wrapped_model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset= eval_ds,
@@ -2526,7 +2526,7 @@ def train(**kwargs):
     else:
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
-            model=model,
+            model=wrapped_model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset=eval_ds,

@@ -194,6 +194,8 @@ def batched_index_select(inp, dim, index):
     index = index.view(views).expand(expanse)
     return torch.gather(inp, dim, index)
 
+class AttnConfig:
+    pass
 
 # === Custom Attentive Prompt Embedding === #
 class AttentivePromptEncoder(torch.nn.Module):
@@ -1447,11 +1449,11 @@ class AttentivePromptEncoder(torch.nn.Module):
             return input_ids, att_mask 
         return input_ids, att_mask
 
+
+
 class PTModel(PeftModel):
-    def __init__(self, base_model, config, adapter_config, attn_pt=None):
-        super().__init__(base_model, config)
-        self.prompt_tuning = config.prompt_tuning
-        self.attn_prompt_tuning = config.attn_tuning
+    def __init__(self, base_model, peft_config, attn_pt=None):
+        super().__init__(base_model, peft_config)
         self.base_model = base_model
         self.attentive_prompt_encoder = attn_pt 
 
@@ -1474,6 +1476,47 @@ class PTModel(PeftModel):
         # inputs_embeds = torch.cat([attentive_embeddings, input_embeddings], dim=1)
         return self.base_model(inputs_embeds=inputs_embeds, 
                             attention_mask=attention_mask, **kwargs)
+
+from transformers import PreTrainedModel
+from typing import Optional, Dict, Any
+
+class CustomModelWrapper(PreTrainedModel):
+    def __init__(self, base_model, base_config, attn_pt=None):
+        super().__init__(base_config)
+        self.base_model = base_model
+        self.attentive_prompt_encoder = attn_pt
+
+    def forward(self, input_ids: Optional[torch.Tensor] = None, 
+                inputs_embeds: Optional[torch.Tensor] = None, 
+                attention_mask: Optional[torch.Tensor] = None, 
+                task_embedding: Optional[torch.Tensor] = None,
+                task_ids: Optional[torch.Tensor] = None,
+                task: Optional[str] = None,
+                **kwargs) -> Dict[str, Any]:
+        
+        # Get the embedding layer from the base model
+        embedding_layer = self.base_model.get_input_embeddings()
+        
+        # If input_ids are provided, convert them to embeddings
+        if input_ids is not None:
+            inputs_embeds = embedding_layer(input_ids)
+        
+        # Apply prompt tuning if enabled
+        if self.prompt_tuning or self.attn_prompt_tuning:
+            if self.attentive_prompt_encoder is not None:
+                input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
+                    input_ids, inputs_embeds, task_ids, task, att_mask=attention_mask
+                )
+        
+        # Pass the inputs to the base model
+        outputs = self.base_model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            **kwargs
+        )
+        
+        return outputs
+
 
 # === Setup for Training === #
 def setup_training():
