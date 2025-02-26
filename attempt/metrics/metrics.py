@@ -14,7 +14,7 @@ import functools
 from pandas.plotting import table
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr 
-# import torch
+import torch
 import wandb
 from rouge import Rouge
 from attempt.mylogs import *

@@ -282,11 +282,14 @@ def map_param(param_map, x, key=False):
     if k.startswith("^"):
         k = k.strip("^")
         pre += "^"
+    vm = v
+    if v.startswith("#") or v.startswith("@"):
+        vm = param_map[v] 
     m = param_map[k] if k in param_map else k
     if key is True or not v: 
         return m
     else:
-        return pre + m + "=" + v 
+        return pre + m + "=" + vm 
 
 @click.group()
 def cli():
@@ -2110,7 +2113,7 @@ def train(**kwargs):
 
         # Sequence-to-Sequence Processing
         cleaned_targets = examples["target"]
-        if task_type != "SEQ_2_SEQ_LM":
+        if task_type != "SEQ_2_SEQ_LM" or not "t5" in model_name_or_path:
             cleaned_targets = [clean_target_label(target) for target in examples["target"]]
         if task_type == "SEQ_2_SEQ_LM":
             mylogs.bp("encode")

@@ -1469,8 +1469,9 @@ class MRPC(AbstractTask):
                            "test": "validation"}
     # labels_map = {"map":{"0":"unequal","1":"duplicate"}
     labels_map = {
+            "map1": {"0":"not","1":"are equal"},
             "map": {"0":"not_equivalent","1":"equivalent"},
-            "map1": {"0":"not_duplicate","1":"duplicate"},
+            "map2": {"0":"not_duplicate","1":"duplicate"},
         #      "map2":{"0":"not_equal","1":"duplicate"}
         }
     # labels_map = {"map":{"0":"F","1":"G"}
@@ -1490,6 +1491,7 @@ class MRPC1(MRPC):
     split_folder = {"train": "mrpc", "test":"mrpc"}
     labels_map = {
             "map": {"0":"not_equivalent","1":"equivalent"},
+            "map1": {"0":"not_equivalent","1":"equivalent"},
         #      "map2":{"0":"not_equal","1":"duplicate"}
         }
 
@@ -2279,7 +2281,7 @@ class QQP(AbstractTask):
     metric = [metrics.f1_score_with_invalid, metrics.accuracy]
     metric_names = ["f1", "accuracy"]
     labels_map = {
-            "map1": {"0":"not_equivalent","1":"equivalent"},
+            "map1": {"0":"not","1":"are equal"},
             "map": {"0":"not_duplicate","1":"duplicate"},
             "map2": {"0":"not_equal","1":"duplicate"},
             "map3": {"0":"different","1":"duplicate"},
