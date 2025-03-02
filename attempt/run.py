@@ -1566,7 +1566,7 @@ def train(**kwargs):
     model, task_type, model_name_or_path=load_base_model(model_name_or_path,mylogs.pretPath) 
     base_config = AutoConfig.from_pretrained(model_name_or_path)
     # Load a model config
-    ptun_config = PromptTuningConfig(
+    peft_config = PromptTuningConfig(
         task_type=task_type,
         num_virtual_tokens=10,  # Define number of soft prompt tokens
         tokenizer_name_or_path=model_name_or_path
@@ -1642,9 +1642,14 @@ def train(**kwargs):
 
     # Initialize custom model with attentive prompt embedding
     attn_pt = None
+    
+    wrapped_model = model
     if config.prompt_tuning or config.attn_tuning:
         attn_pt = AttentivePromptEncoder(config, adapter_config)
-    wrapped_model = CustomModelWrapper(model, attn_pt)
+        if False:
+            wrapped_model = PTModel(model, peft_config, attn_pt)
+        else:
+            wrapped_model = CustomModelWrapper(model, base_config, attn_pt)
 
     #model = T5ForConditionalGeneration.from_pretrained(
     #    model_name_or_path,
@@ -2106,7 +2111,6 @@ def train(**kwargs):
             padding=padding,
             truncation=True
         )
-
         if preview == "data":
             print("source:", examples["source"][:hit_count])
             print("target:", examples.get("target", [])[:hit_count])
@@ -2186,7 +2190,7 @@ def train(**kwargs):
 
 
 
-    def preprocess_function2(examples, max_target_length, task_id=None):
+    def preprocess_function2(examples, max_target_length, task_type="", task_id=None):
         mylogs.bp("data")
         model_inputs = tokenizer(examples['source'], max_length=data_args.max_source_length,
                                  padding=padding, truncation=True)
@@ -2993,7 +2997,7 @@ def train(**kwargs):
                     metric_key_prefix="test", 
                     #task=task
                 )
-            predicted_token_ids = predictions[1].argmax(axis=-1)
+            predicted_token_ids = predictions[0].argmax(axis=-1)
 
             if adapter_args.prompt_tuning and gen_conf["mask_type"].startswith("no-mask"):
                 no_mask_preds[task] = (predictions, labels, metrics)

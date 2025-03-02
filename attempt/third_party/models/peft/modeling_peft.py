@@ -1170,7 +1170,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         return lambda x: self.isin(x, self.task_prompt_ids)
 
     # pppppppppp
-    def prompt_encoders_forward(self, input_ids, inputs_embeds, task_ids, task, att_mask):
+    def prompt_encoders_forward(self, input_ids, inputs_embeds, 
+            att_mask, task_ids=None, task=None):
         if len(self.prompt_encoders) > 0:
             mylogs.bp("fwd")
             if not self.training:
@@ -1452,9 +1453,9 @@ class AttentivePromptEncoder(torch.nn.Module):
 
 
 class PTModel(PeftModel):
-    def __init__(self, base_model, peft_config, attn_pt=None):
-        super().__init__(base_model, peft_config)
-        self.base_model = base_model
+    def __init__(self, nested_model, peft_config, attn_pt=None):
+        super().__init__(nested_model, peft_config)
+        self.nested_model = nested_model
         self.attentive_prompt_encoder = attn_pt 
 
     def forward(self, input_ids, 
@@ -1464,66 +1465,67 @@ class PTModel(PeftModel):
         task_ids=None,
         task=None,
         **kwargs):
-        embedding_layer = self.base_model.get_input_embeddings()
+        embedding_layer = self.nested_model.get_input_embeddings()
         inputs_embeds = embedding_layer(input_ids)
         mylogs.bp("fwd")
-        if self.prompt_tuning or self.attn_prompt_tuning:
+        if self.attentive_prompt_encoder is not None:
             input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
                     input_ids, inputs_embeds, 
-                    task_ids, 
-                    task, att_mask = attention_mask)
+                    #task_ids, 
+                    #task, 
+                    att_mask = attention_mask)
 
         # inputs_embeds = torch.cat([attentive_embeddings, input_embeddings], dim=1)
-        return self.base_model(inputs_embeds=inputs_embeds, 
+        return self.nested_model(inputs_embeds=inputs_embeds, 
                             attention_mask=attention_mask, **kwargs)
+
 
 from transformers import PreTrainedModel
 from typing import Optional, Dict, Any
+import torch
 
 class CustomModelWrapper(PreTrainedModel):
-    def __init__(self, base_model, base_config, attn_pt=None):
+    def __init__(self, nested_model, base_config, attn_pt=None):
         super().__init__(base_config)
-        self.base_model = base_model
+        self.nested_model = nested_model
         self.attentive_prompt_encoder = attn_pt
 
     def forward(self, input_ids: Optional[torch.Tensor] = None, 
                 inputs_embeds: Optional[torch.Tensor] = None, 
                 attention_mask: Optional[torch.Tensor] = None, 
-                task_embedding: Optional[torch.Tensor] = None,
-                task_ids: Optional[torch.Tensor] = None,
-                task: Optional[str] = None,
+                labels=None,
                 **kwargs) -> Dict[str, Any]:
         
         # Get the embedding layer from the base model
-        embedding_layer = self.base_model.get_input_embeddings()
-        
+        embedding_layer = self.nested_model.get_input_embeddings()
+        if not self.training:
+            pass
         # If input_ids are provided, convert them to embeddings
         if input_ids is not None:
             inputs_embeds = embedding_layer(input_ids)
         
         # Apply prompt tuning if enabled
-        if self.prompt_tuning or self.attn_prompt_tuning:
-            if self.attentive_prompt_encoder is not None:
-                input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
-                    input_ids, inputs_embeds, task_ids, task, att_mask=attention_mask
-                )
-        
+        if self.attentive_prompt_encoder is not None:
+            input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
+                input_ids, inputs_embeds, att_mask=attention_mask
+            )
+
+        # Ensure decoder inputs are provided
         # Pass the inputs to the base model
-        outputs = self.base_model(
+        outputs = self.nested_model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            **kwargs
+            labels=labels,
         )
         
         return outputs
-
 
 # === Setup for Training === #
 def setup_training():
     # Load pre-trained model and tokenizer
     model_name_or_path = "t5-small"
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-    base_model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
+    nested_model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
 
     # PEFT configuration
     peft_config = PromptTuningConfig(
@@ -1536,7 +1538,7 @@ def setup_training():
     attn_prompt_embedding = AttentivePromptEncoder(peft_config)
 
     # Initialize custom model with attentive prompt embedding
-    model = PTModel(base_model, peft_config, attn_prompt_embedding)
+    model = PTModel(nested_model, peft_config, attn_prompt_embedding)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")  # Move model to GPU if available
 
     return model, tokenizer
@@ -1553,7 +1555,7 @@ def train_model(model, tokenizer):
     encoded_dataset = dataset.map(preprocess_function, batched=True)
 
     # Setup data collator and training arguments
-    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model.base_model)
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model.nested_model)
     training_args = TrainingArguments(
         output_dir="./results",
         evaluation_strategy="epoch",
