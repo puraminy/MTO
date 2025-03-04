@@ -30,6 +30,7 @@
   "ptemp":"prompt_template",
   "map":"mapping",
   "ml":"map_labels",
+  "peft":"peft_method",
   "maps":"map_style",
   "uma":"use_masked_attn",
   "lr":"learning_rate",

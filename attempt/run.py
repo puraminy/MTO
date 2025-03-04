@@ -1087,7 +1087,7 @@ def train(**kwargs):
     prompts_conf = kwargs.get("prompts_conf", None)
     if prompts_conf in ["SLP","SL"]:
         kwargs["num_train_epochs"] = int(kwargs["num_train_epochs"]) + 10
-    if prompts_conf in ["SIL","SL"] and kwargs["compose_method"] == "wsp1":
+    if prompts_conf in ["SIL","SL"] and "compose_method" in kwargs and kwargs["compose_method"] == "wsp1":
         kwargs["compose_method"] = "wavg" 
 
     kwargs = overwrite_conf(kwargs)
@@ -1566,11 +1566,6 @@ def train(**kwargs):
     model, task_type, model_name_or_path=load_base_model(model_name_or_path,mylogs.pretPath) 
     base_config = AutoConfig.from_pretrained(model_name_or_path)
     # Load a model config
-    peft_config = PromptTuningConfig(
-        task_type=task_type,
-        num_virtual_tokens=10,  # Define number of soft prompt tokens
-        tokenizer_name_or_path=model_name_or_path
-    )
     config = AttnConfig()
 
     config.train_task_adapters = adapter_args.train_task_adapters
@@ -1642,14 +1637,23 @@ def train(**kwargs):
 
     # Initialize custom model with attentive prompt embedding
     attn_pt = None
+    if config.attn_tuning:
+        attn_pt = AttentivePromptEncoder(config, adapter_config)
     
     wrapped_model = model
-    if config.prompt_tuning or config.attn_tuning:
-        attn_pt = AttentivePromptEncoder(config, adapter_config)
-        if False:
-            wrapped_model = PTModel(model, peft_config, attn_pt)
-        else:
-            wrapped_model = CustomModelWrapper(model, base_config, attn_pt)
+    peft_method = kwargs.get("peft_method", False)
+    if peft_method:
+        if peft_method == "ptun":
+            peft_config = PromptTuningConfig(
+                task_type=task_type,
+                num_virtual_tokens=10,  # Define number of soft prompt tokens
+                tokenizer_name_or_path=model_name_or_path
+            )
+        model.enable_input_require_grads()
+        #wrapped_model = get_peft_model(model, peft_config)
+        wrapped_model = PTModel(model, peft_config, attn_pt)
+    elif attn_pt is not None:
+        wrapped_model = CustomModelWrapper(model, base_config, attn_pt)
 
     #model = T5ForConditionalGeneration.from_pretrained(
     #    model_name_or_path,
@@ -2037,8 +2041,9 @@ def train(**kwargs):
     rgrad = len([p for p in model.parameters() if p.requires_grad])
     nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     mylogs.plog.info("Before freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
-    model = modify_model_after_init(
-        model, training_args, adapter_args, adapter_config)
+    if attn_pt is not None:
+        model = modify_model_after_init(
+            model, training_args, adapter_args, adapter_config)
    
     learn_loaded_prompts = kwargs.setdefault("learn_loaded_prompts", True) 
     learn_private_prompts = kwargs.setdefault("learn_private_prompts", True) 
@@ -2376,14 +2381,15 @@ def train(**kwargs):
 
     # If you want to use a different learning rate for attention layer, initialize an optimizer using the learning rate here.
     grouped_params = []
-    all_parameters = set([p for p in model.parameters() if p.requires_grad])
+    all_parameters = set([p for p in wrapped_model.parameters() if p.requires_grad])
     attn_params = []
     prompt_params = []
     mylogs.bp("lr")
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
-        for name, param in attn_pt.named_parameters():
-           if name == "router": 
-              attn_params.append(param)
+        if attn_pt is not None:
+            for name, param in attn_pt.named_parameters():
+               if name == "router": 
+                  attn_params.append(param)
         for name, param in model.named_parameters():
             if (name == "encoder.attn_W_up.weight" 
                 or name == "encoder.attn_W_down.weight" 
@@ -2467,6 +2473,7 @@ def train(**kwargs):
     mylogs.bp("optim")
     opt_type = kwargs.get("opt_type","adam")
     scheduler = None
+    optim = None
     if opt_type == "sep":
         optim, scheduler = get_optimizer(model, steps,
                 source_prompt_learning_rate, 
@@ -2523,9 +2530,9 @@ def train(**kwargs):
      #       evaluation_metrics=task_metric,
      #       save_checkpoint = kwargs.setdefault("save_checkpoint", False),
      #       shared=model_args.shared_attn,
-            callbacks = callbacks, 
+           # callbacks = callbacks, 
      #       shuffle = trainer_shuffle,
-            optimizers=(optim, scheduler)
+             optimizers=(optim, scheduler)
         )
     else:
         # trainer = Seq2SeqTrainer(
@@ -2740,8 +2747,9 @@ def train(**kwargs):
     # Test
     mylogs.bp("do_test")
     reval = not training_args.do_train 
-    slen = len([e for e in attn_pt.prompt_encoders if e.is_source and not e.is_private]) 
-    exp_info["slen"] = slen
+    if attn_pt is not None:
+        slen = len([e for e in attn_pt.prompt_encoders if e.is_source and not e.is_private]) 
+        exp_info["slen"] = slen
     load_model_dir = kwargs.get("load_model_dir", training_args.output_dir)
     use_test_config = kwargs.get("use_test_config", False)
     if reval: 
@@ -2985,7 +2993,8 @@ def train(**kwargs):
         def evaluate_test(task, test_dataset, save_to, ds_name, auto_task, 
                 gen_conf = {}, use_cache=False):
             mylogs.bp("ttt")
-            attn_pt.gen_conf = gen_conf
+            if attn_pt is not None:
+                attn_pt.gen_conf = gen_conf
             if use_cache and task in no_mask_preds:
                 predictions, labels, metrics = no_mask_preds[task] 
             else:
@@ -2997,7 +3006,10 @@ def train(**kwargs):
                     metric_key_prefix="test", 
                     #task=task
                 )
-            predicted_token_ids = predictions[0].argmax(axis=-1)
+            if peft_method:
+                predicted_token_ids = predictions[1].argmax(axis=-1)
+            else:
+                predicted_token_ids = predictions[0].argmax(axis=-1)
 
             if adapter_args.prompt_tuning and gen_conf["mask_type"].startswith("no-mask"):
                 no_mask_preds[task] = (predictions, labels, metrics)
