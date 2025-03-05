@@ -31,7 +31,6 @@ from data import AutoPostProcessor
 from third_party.models import PTModel, AttentivePromptEncoder, AttnConfig, CustomModelWrapper 
 from transformers import Trainer #, TrainingArguments, DataCollatorForSeq2Seq
 
-from peft import PromptTuningConfig, get_peft_model, PeftConfig
 
 
 from dataclasses import dataclass, field
@@ -97,6 +96,65 @@ logger = logging.getLogger(__name__)
 global_scores = []
 global_y_labels = []
 global_x_labels = []
+
+from peft import PromptTuningConfig, get_peft_model, PeftConfig
+from peft import (
+    PromptTuningConfig,
+    LoraConfig,
+    PrefixTuningConfig,
+    TaskType
+)
+
+def get_peft_config(peft_method, task_type, model_name_or_path, adapter_args):
+    """
+    Returns the appropriate PEFT configuration based on the specified method.
+
+    Args:
+        peft_method (str): The PEFT method to use ("ptun", "lora", "adapter", "prefix").
+        task_type (TaskType): The task type (e.g., TaskType.SEQ_CLS, TaskType.CAUSAL_LM).
+        model_name_or_path (str): The name or path of the pre-trained model.
+        adapter_args (dict or object): A dictionary or object containing method-specific arguments.
+
+    Returns:
+        peft_config: The PEFT configuration object.
+
+    Raises:
+        ValueError: If the PEFT method is not supported.
+    """
+    if peft_method == "ptun":
+        peft_config = PromptTuningConfig(
+            task_type=task_type,
+            num_virtual_tokens=adapter_args.num_prompt_tokens,  
+            tokenizer_name_or_path=model_name_or_path
+        )
+
+    elif peft_method == "lora":
+        peft_config = LoraConfig(
+            task_type=task_type,
+            r=adapter_args.get("lora_rank",8),  # Rank of the low-rank matrices
+            lora_alpha=adapter_args.get("lora_alpha",32),  # Scaling factor
+            lora_dropout=adapter_args.get("lora_dropout",0.1),  # Dropout rate
+            # target_modules=adapter_args.target_modules,  # Target modules to apply LoRA
+        )
+
+    elif peft_method == "adapter":
+        peft_config = AdapterConfig(
+            task_type=task_type,
+            reduction_factor=adapter_args.adapter_reduction_factor,  
+            adapter_layernorm_option=adapter_args.adapter_layernorm_option,  
+        )
+
+    elif peft_method == "prefix":
+        peft_config = PrefixTuningConfig(
+            task_type=task_type,
+            num_virtual_tokens=adapter_args.num_prompt_tokens,  
+            prefix_projection=adapter_args.prefix_projection,  
+        )
+
+    else:
+        raise ValueError(f"Unsupported PEFT method: {peft_method}")
+
+    return peft_config
 
 from transformers import AutoModel, AutoModelForSeq2SeqLM, AutoModelForSequenceClassification, \
     AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoTokenizer
@@ -296,7 +354,7 @@ def cli():
             ignore_unknown_options=True,
             allow_extra_args=True,))
 
-@click.argument('cfg_path')
+@click.argument('cfg_pat')
 @click.option(
     "--experiment",
     "-exp",
@@ -478,7 +536,7 @@ def cli():
     help="The directory to save all experiments"
 )
 @click.pass_context
-def run(ctx, cfg_path, experiment, exp_conf, break_point, preview, exp_vars, 
+def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars, 
         log_var, last_var, main_vars, 
         debug, version, trial, skip, save_conf, rem, repeat, 
         label, deep_check, merge, not_copy_prev_exp, 
@@ -502,11 +560,11 @@ def run(ctx, cfg_path, experiment, exp_conf, break_point, preview, exp_vars,
        log_path = mylogs.logPath 
    if not log_path.startswith("/"):
        log_path = os.path.join(mylogs.logPath, log_path)
-   if exp_conf or cfg_path:
-        print("Experiment pattern:", cfg_path)
+   if exp_conf or cfg_pat:
+        print("Experiment pattern:", cfg_pat)
         cur_path = os.getcwd()
         print("Cur path:", cur_path)
-        confs = glob.glob(f"*{cfg_path}*")
+        confs = glob.glob(f"*{cfg_pat}*")
         print("Experiment matched confs:", confs)
         if not exp_conf and confs:
             exp_conf = confs[0]
@@ -1122,6 +1180,15 @@ def train(**kwargs):
         kwargs = {**kwargs, **pflags}
 
     kwargs = dotdict(kwargs)
+    def_method = "ft" # Fine tuning
+    if adapter_args.prompt_tuning:
+        def_method = "pt"
+    elif kwargs.attn_tuning:
+        def_method = "apt"
+    peft_method = kwargs.get("peft_method", False)
+    if peft_method:
+        def_method = "peft"
+    method = kwargs.get("method", def_method) 
     _dict = kwargs.copy()
     for c in ["tag","log_var","main_vars","full_tag","new_exp_folder", 
             "total_exp", "exclude_tasks", "include_tasks", "break_point", "repeat"]:
@@ -1281,7 +1348,7 @@ def train(**kwargs):
     nsp += inp_nsp 
     num_source_prompts = nsp 
     num_target_prompts = 1
-    if model_args.attn_tuning is True:
+    if method == "apt":
         num_target_prompts = kwargs.setdefault("num_target_prompts",num_source_prompts) 
         if num_target_prompts == "auto":
             num_target_prompts = (num_source_prompts // 2) + 1
@@ -1351,7 +1418,7 @@ def train(**kwargs):
                                     adapter_args.num_prompt_tokens)
     task_args["fixed_length_prompt"] = adapter_args.fixed_length_prompt
     input_template = data_args.template
-    if adapter_args.prompt_tuning and not "ptar" in input_template:
+    if method == "pt" and not "ptar" in input_template:
         if input_template in ["unsup-nat", "sup-nat"]:
             ptemp = "ptar"
         else:
@@ -1571,8 +1638,8 @@ def train(**kwargs):
     config.train_task_adapters = adapter_args.train_task_adapters
     config.prefix_tuning = adapter_args.prefix_tuning
     config.dropout_rate = kwargs.get("dropout", 0.1)
-    config.prompt_tuning = adapter_args.prompt_tuning #my option
-    config.attn_tuning = model_args.attn_tuning
+    config.prompt_tuning = method == "pt" #my option
+    config.attn_tuning = method == "apt"
     config.attn_method = model_args.attn_method
     compose_method = model_args.compose_method #my option
     config.compose_method = compose_method 
@@ -1643,12 +1710,7 @@ def train(**kwargs):
     wrapped_model = model
     peft_method = kwargs.get("peft_method", False)
     if peft_method:
-        if peft_method == "ptun":
-            peft_config = PromptTuningConfig(
-                task_type=task_type,
-                num_virtual_tokens=10,  # Define number of soft prompt tokens
-                tokenizer_name_or_path=model_name_or_path
-            )
+        peft_config = get_peft_config(peft_method, task_type, model_name_or_path, kwargs)
         model.enable_input_require_grads()
         #wrapped_model = get_peft_model(model, peft_config)
         wrapped_model = PTModel(model, peft_config, attn_pt)
@@ -1682,7 +1744,7 @@ def train(**kwargs):
                 target_prompt_embedding = torch.load(
                     model_args.target_prompt_embedding_path, map_location=mapl)
 
-        if model_args.attn_tuning is True:
+        if method == "apt":
             if training_args.do_train is True and model_args.multi_task is False and model_args.shared_attn is False:
                 # Initialize the prompt embeddings using the first prompts
                 # Load all of the target prompts
@@ -1740,7 +1802,7 @@ def train(**kwargs):
     mylogs.bp("router")
     router_dict = None
     init_router = None
-    if model_args.attn_tuning is True and use_saved_router:
+    if method == "apt" and use_saved_router:
        dpath = os.path.join(prompts_dir, router_prefix + "_router.pt")
        if not Path(dpath).is_file():
            kwargs["use_saved_router"] = "NA" # Not found
@@ -1771,7 +1833,7 @@ def train(**kwargs):
                 str(data_args.max_train_samples)
 
     exp_info["load_private_prompts"] = load_private_prompts
-    if not load_source_prompts and model_args.attn_tuning:
+    if not load_source_prompts and method == "apt":
         prompts_prefix = prompts_prefix 
                 # + "_" \
                 # + kwargs.experiment.split("/")[0] 
@@ -1781,7 +1843,7 @@ def train(**kwargs):
         router_prefix = prompts_prefix
 
     shared_mat = None
-    if adapter_args.prompt_tuning:
+    if method == "pt":
         added = add_specials(tokenizer)
         logger.info("%s tokens was addded", added)
         new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
@@ -1951,7 +2013,7 @@ def train(**kwargs):
                 prefix=str(opp),
                 as_saved=True,
                 length = target_prompt_length)
-            if not model_args.attn_tuning and prompt_exists and skip_if_prompt_exists: 
+            if not method == "apt" and prompt_exists and skip_if_prompt_exists: 
                 print("prompt exists: ", prompt_fname)
                 return
 
@@ -1998,9 +2060,9 @@ def train(**kwargs):
                         encoder.attend_to_mask = [1]*num_attend_to # attend to all 
             if kwargs.setdefault("init_from_words", False):
                 encoder.init_embs_from_words(model.get_input_embeddings())
-            if not model_args.attn_tuning and load_prompts: 
+            if not method == "apt" and load_prompts: 
                 ignore_if_prompt_not_exists = kwargs.setdefault("ignore_if_prompt_not_exists", False)
-                # if not model_args.attn_tuning or encoder.is_source:
+                # if not method == "apt" or encoder.is_source:
                 is_loaded = encoder.load(prompts_dir, 
                         prefix=prompts_prefix,
                         ignore_if_prompt_not_exists=ignore_if_prompt_not_exists,
@@ -2048,7 +2110,7 @@ def train(**kwargs):
     learn_loaded_prompts = kwargs.setdefault("learn_loaded_prompts", True) 
     learn_private_prompts = kwargs.setdefault("learn_private_prompts", True) 
     requires_grad_encoders = []
-    if adapter_args.prompt_tuning:
+    if method == "pt":
         for encoder in prompt_encoders: 
             if encoder.is_private and learn_private_prompts:
                 for n,p in encoder.named_parameters():
@@ -2424,7 +2486,7 @@ def train(**kwargs):
     pvt_prompt_params = []
     mylogs.bp("opt")
     learning_rate = training_args.learning_rate
-    if adapter_args.prompt_tuning:
+    if method == "pt":
         if "learning_rate" in main_vars:
             target_prompt_learning_rate = learning_rate
         learning_rate = target_prompt_learning_rate
@@ -2512,9 +2574,9 @@ def train(**kwargs):
     ptlr_callback = PTLearningRateCallback()
     callbacks = []
     # optimizer = AdamW(model.prompt_encoder.parameters(), lr=1e-4)  # Optimize only soft prompts
-    if model_args.attn_tuning:
+    if method == "apt":
        callbacks = [ptlr_callback, wb_callback, anneal_callback]
-    if kwargs.use_optimizer: #TODO remove condition and the else part 
+    if False: #kwargs.use_optimizer: #TODO remove condition and the else part 
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
         trainer = Trainer(
@@ -2571,7 +2633,7 @@ def train(**kwargs):
         saved_prompts_prefix = str(saved_prompts_prefix)
         attention_paths = [dpath, 
                 os.path.join(load_path, "attn_W_up.pt")]
-        if model_args.attn_tuning is True and Path(dpath).is_file():
+        if method == "apt" and Path(dpath).is_file():
             trainer.model.update_attention_weights_sub(attention_paths)
             if model_args.load_layer_norm and "layer_norm_bias.pt" in load_path: 
                 trainer.model.update_layer_norm_weights(load_path)
@@ -2585,7 +2647,7 @@ def train(**kwargs):
                 encoder.to(device)
         dpath = os.path.join(load_path, router_prefix + "_router.pt")
         mylogs.bp("router")
-        if model_args.attn_tuning is True:
+        if method == "apt":
               assert Path(dpath).is_file(), dpath + " doesn't exist to load model"
               router_dict = torch.load(dpath, map_location=device)
               attend_num = len(router_dict)
@@ -2636,8 +2698,8 @@ def train(**kwargs):
         #    load_model(best_chk_path, lsp)
 
         # Save prompts
-        if adapter_args.prompt_tuning:
-            #if not model_args.attn_tuning: 
+        if method == "pt":
+            #if not method == "apt": 
             #    prompts_prefix = "pt_" + prompts_prefix 
             #else: 
             #    prompts_prefix = "att_" + prompts_prefix 
@@ -2653,7 +2715,7 @@ def train(**kwargs):
             if not prompts_to_save:
                 prompts_to_save = "all" if save_all_prompts else None
             attn_pt.store_encoders(output_dir = training_args.output_dir,
-                                 prompts_and_router_only=model_args.attn_tuning, 
+                                 prompts_and_router_only=method == "apt", 
                                  save_source_prompts = ssp, 
                                  prompts_to_save = prompts_to_save, 
                                  save_router=True,
@@ -2666,7 +2728,7 @@ def train(**kwargs):
             if save_to_prompts_dir or save_router:
                 Path(prompts_dir).mkdir(parents = True, exist_ok=True)
                 attn_pt.store_encoders(output_dir = prompts_dir, 
-                        prompts_and_router_only=model_args.attn_tuning, 
+                        prompts_and_router_only=method == "apt", 
                         prompts_to_save = prompts_to_save or "all", 
                         save_source_prompts = ssp,
                         save_router = save_router,
@@ -2725,7 +2787,7 @@ def train(**kwargs):
     results = {}
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-        if model_args.attn_tuning is True:
+        if method == "apt":
             load_model_dir = kwargs.get("load_model_dir", training_args.output_dir)
             load_model(load_model_dir, lsp=True) 
 
@@ -2754,7 +2816,7 @@ def train(**kwargs):
     use_test_config = kwargs.get("use_test_config", False)
     if reval: 
         load_model(load_model_dir, 
-                lsp=model_args.attn_tuning)
+                lsp=method == "apt")
     for k,v in kwargs.items():
         if not k in exp_info and not k.startswith("comment"):
             exp_info[k] = v
@@ -3011,7 +3073,7 @@ def train(**kwargs):
             else:
                 predicted_token_ids = predictions[0].argmax(axis=-1)
 
-            if adapter_args.prompt_tuning and gen_conf["mask_type"].startswith("no-mask"):
+            if method == "pt" and gen_conf["mask_type"].startswith("no-mask"):
                 no_mask_preds[task] = (predictions, labels, metrics)
             
             mylogs.bp("gen")
@@ -3134,7 +3196,7 @@ def train(**kwargs):
         ################ Draw image
         def save_image(folder, model, score_dict, spec, p_labels=None, 
                 square=False, annot=True, vmin=None, vmax=None, mask_zeros=False):
-            if not model_args.attn_tuning:
+            if not method == "apt":
                 return
             targets = attn_pt.target_encoders_idx
             mylogs.bp("save_image")
@@ -3225,7 +3287,7 @@ def train(**kwargs):
         mask_num_start = 0
         if masking_list:
             gen_masks_list = []
-        if adapter_args.prompt_tuning:
+        if method == "pt":
             prompt_names = attn_pt.prompt_names
         for masking in masking_list:
             gen_masks = {}
@@ -3297,7 +3359,7 @@ def train(**kwargs):
             exp_folder = Path(training_args.output_dir).parent
         exp_folder_name = Path(training_args.output_dir).stem
         exp_folder = str(exp_folder) 
-        if not adapter_args.prompt_tuning:
+        if not method == "pt":
             eval_folder = training_args.output_dir
             for idx, (task, test_dataset) in enumerate(test_datasets.items()):
                 auto_task = auto_tasks[task]
@@ -3390,7 +3452,7 @@ def train(**kwargs):
                         eval_folders[test_key].append(eval_folder_name)
                         if not test_key in task_scores[rm]:
                             task_scores[rm][test_key] = {}
-                        if adapter_args.prompt_tuning:
+                        if method == "pt":
                             targets = attn_pt.target_encoders_idx
                             y_labels = [attn_pt.prompt_names[i] for i in targets]
                             y_labels = [y.replace("tar-","") for y in y_labels]
@@ -3435,7 +3497,7 @@ def train(**kwargs):
                                 counter += 1
                                 continue
                             use_cache = False
-                            if adapter_args.prompt_tuning: 
+                            if method == "pt": 
                                 if mask is not None: 
                                     mylogs.bp("cache")
                                     task_index = y_labels.index(task)
@@ -3482,7 +3544,7 @@ def train(**kwargs):
                         if mask is None:
                             full_attn_mat = attn_pt.attn_scores
                         mean_score = total_score / counter
-                        if adapter_args.prompt_tuning:
+                        if method == "pt":
                             targets = attn_pt.target_encoders_idx
                             router_scores = attn_pt.router.index_select(0, targets)
                             tlen = router_scores.size(0)
@@ -3665,7 +3727,7 @@ def train(**kwargs):
                 new_im.save(os.path.join(training_args.output_dir, "images", fname))
 
 
-        if model_args.attn_tuning:
+        if method == "apt":
             targets = attn_pt.target_encoders_idx
             scores_matrix = attn_pt.attn_scores.index_select(0, targets)
             router_scores = attn_pt.router.index_select(0, targets)
@@ -3736,9 +3798,9 @@ def train(**kwargs):
             if adapter_args.prefix_tuning:
                 save_prompts(model, output_dir=new_dir, 
                      prefix_dir = prefix_dir,
-                     attn_tuning=model_args.attn_tuning,
+                     attn_tuning=method == "apt",
                      shared_attn=model_args.shared_attn, num_target=config.num_target, task_name=data_args.task_name)
-            if adapter_args.prompt_tuning:
+            if method == "pt":
                 save_to_prompts_dir = kwargs.setdefault("save_to_prompts_dir", False) 
                 mylogs.bp("store")
                 if save_to_prompts_dir:
@@ -3800,7 +3862,7 @@ def train(**kwargs):
                 and "layer_norm_bias.pt" in checkpoint_dir):
                 trainer.model.update_layer_norm_weights(checkpoint_dir)
             dpath = os.path.join(checkpoint_dir, router_prefix + "_router.pt")
-            if model_args.attn_tuning is True and Path(dpath).is_file():
+            if method == "apt" and Path(dpath).is_file():
                 trainer.model.update_router(dpath)
             else:
                 dpath = os.path.join(prompts_dir, router_prefix + "_router.pt")
