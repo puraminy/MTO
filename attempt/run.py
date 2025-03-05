@@ -1639,7 +1639,7 @@ def train(**kwargs):
     config.prefix_tuning = adapter_args.prefix_tuning
     config.dropout_rate = kwargs.get("dropout", 0.1)
     config.prompt_tuning = method == "pt" #my option
-    config.attn_tuning = method == "apt"
+    config.attn_tuning = "apt" in method
     config.attn_method = model_args.attn_method
     compose_method = model_args.compose_method #my option
     config.compose_method = compose_method 
