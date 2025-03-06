@@ -1607,6 +1607,8 @@ def train(**kwargs):
         total_steps = steps + warmup_steps + 5
     
     mylogs.bp("steps")
+    warmup_steps = 0 if warmup_steps is None else warmup_steps
+    breakpoint()
     anneal_steps = 0.6*total_steps
     ftemp = kwargs.get("fixed_temperature", -1)
     if ftemp > 0 and "temperature" not in main_vars:
