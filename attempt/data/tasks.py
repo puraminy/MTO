@@ -1067,7 +1067,7 @@ class AbstractTask(abc.ABC):
         tgt = ' '.join(targets)
         src = src.strip()
         tgt = tgt.strip()
-
+        mylogs.bp("format")
         prompt_len = self.get_prompt_length()
         max_input_len = 511 - len(tgt) - prompt_len
         if self.multi_choice:

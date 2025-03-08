@@ -79,6 +79,7 @@
   "alr":"attn_learning_rate",
   "attn":"attn_method",
   "mt":"method",
+  "uo":"use_optimizer",
   "ppx":"prompts_prefix",
   "oppx":"output_prompts_prefix",
   "rpx":"router_prefix",
