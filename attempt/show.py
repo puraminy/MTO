@@ -44,7 +44,24 @@ from PIL import ImageDraw
 from PIL import ImageChops
 #import sklearn
 #import sklearn.metrics
-import attempt.metrics.metrics as mets
+#import attempt.metrics.metrics as mets
+import scipy
+import math
+def pearson_corrcoef(predictions, targets) -> dict:
+    """Computes Pearson correlation coefficient."""
+    from data.postprocessors import string_to_float
+    targets = [string_to_float(target) for target in targets]
+    predictions = [string_to_float(prediction) for prediction in predictions]
+    if np.isnan(predictions).any():
+        predictions = np.nan_to_num(predictions)
+    pearson_corrcoef = 100 * scipy.stats.pearsonr(targets, predictions)[0]
+
+    # Note that if all the predictions will be the same, spearman
+    # correlation is nan, to gaurad against this, we check the output
+    # and return 0 in this case.
+    if math.isnan(pearson_corrcoef):
+        pearson_corrcoef = 0
+    return {"pearson": "{:.2f}".format(pearson_corrcoef)}
 
 def trim_white_borders(image):
     # Convert the image to RGB (if not already in that mode)
@@ -882,11 +899,16 @@ def calc_metrics(main_df):
             task = task.split("_")[-1]
             if len(preds) == 0:
                 continue
+            if task != "stsb":
+                continue
             golds = tdf["target_text"]
-            task_metric = mets.TASK_TO_METRICS[task] if task in mets.TASK_TO_METRICS else ["rouge"]
+            # task_metric = mets.TASK_TO_METRICS[task] if task in mets.TASK_TO_METRICS else ["rouge"]
+
+            task_metric = ['pearson_corrcoef'] #, 'spearman_corrcoef']
+
             metrics_list = []
             for mstr in task_metric:
-                metric = getattr(mets, mstr)
+                metric = pearson_corrcoef
                 if mstr == "rouge":
                     continue
                 met = metric(preds, golds)
@@ -993,7 +1015,7 @@ def show_df(df, summary=False):
     #    df["cossim_decoder"] ="" 
     #    df["cossim_encoder"] ="" 
 
-    if True: #not "m_score" in df:
+    if False: #not "m_score" in df:
         df = calc_metrics(df)
     #if "test_f1" in df:
     #    df["m_score"] = df["test_f1"]
@@ -1907,7 +1929,7 @@ def show_df(df, summary=False):
             if char == "o" and "images" in settings:
                 image_keys = settings["images"].split("@")
             elif char == "y":
-                image_keys = ["effect"]
+                image_keys = ["effect", "score"]
                 merge = "vert"
             elif char == "k" or char == "p":
                 image_keys = ["score","sim"]
@@ -2499,7 +2521,7 @@ def show_df(df, summary=False):
                     mbeep()
                     #arr = ["meld", base_file, exp_file]
                     #subprocess.run(arr)
-        elif char == "t":
+        elif char == "t" and False:
             backit(df, sel_cols)
             mode = "cfg"
             files = glob(os.path.join(home,"results","*.json"))
@@ -2642,8 +2664,9 @@ def show_df(df, summary=False):
                 if not str(expid).isnumeric():
                     expid=Path(rpath).stem
                 path = str(Path(rpath).parent) # + "/" + str(expid)
-                js = os.path.join(path,"conf_" + expid + ".json")
-                fname = "exp"
+                # js = os.path.join(path,"conf_" + expid + ".json")
+                js = os.path.join(path, expid, "exp.json")
+                fname = "conf_tmp_"
                 if char == "Y":
                     compose=tdf.iloc[0]["compose_method"]
                     epc=tdf.iloc[0]["num_train_epochs"]
@@ -2674,7 +2697,6 @@ def show_df(df, summary=False):
                             except FileExistsError:
                                 pass
                         dest = os.path.join(home, "results", fname)
-
                     if Path(js).is_file():
                         shutil.copyfile(js, dest)
                         correct_path(js, dest, path)
@@ -3282,7 +3304,7 @@ def show_df(df, summary=False):
            df = pd.concat(dfs, ignore_index=True)
            sel_cols = df.columns
            group_col = "prefix"
-        if cmd.startswith("cross"):
+        if cmd.startswith("cross") or char == "t":
             backit(df, sel_cols)
             eid = df.iloc[sel_row]['eid'] 
             if "prefix" in df:
@@ -3303,8 +3325,10 @@ def show_df(df, summary=False):
                     _, mask_types = get_sel_rows(df, col="mask_type", from_main=False) 
                 else:
                     mask_types = exprs.copy()
-                _, labels = get_sel_rows(df, col="label", from_main=False) 
-
+                if "label" in df:
+                    _, labels = get_sel_rows(df, col="label", from_main=False) 
+                else:
+                    labels = exprs.copy()
 
             _cols = ["pred_text1", "target_text"]
             dfs = []

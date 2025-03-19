@@ -242,7 +242,7 @@ class ResidualBlock(torch.nn.Module):
 
 
 class ResidualMLPPromptEncoder(PromptEncoder):
-    enc_type = "residual_mlp"
+    enc_type = "rmlp" #residual_mlp
 
     def __init__(self, num_layers=1, hidden_size=-1,
                  nl="relu", out_dim=-1, in_dim=-1, **kwargs):
@@ -438,8 +438,7 @@ class LSTMEmbeddingPromptEncoder(PromptEncoder):
         ret_embeds = F.embedding(index_list, running_weight)
         return ret_embeds
 
-def add_specials(tokenizer):
-    cur_list = tokenizer.additional_special_tokens
+def add_general_specials(tokenizer):
     num_added_toks: dict = {}
     if tokenizer.bos_token is None:
         num_added_toks['bos_token'] = "<s>"
@@ -455,6 +454,10 @@ def add_specials(tokenizer):
         num_added_toks['mask_token'] = "<mask>"
 
     num_tokens = tokenizer.add_special_tokens(num_added_toks)
+    return num_tokens
+
+def add_pt_specials(tokenizer):
+    cur_list = tokenizer.additional_special_tokens
     new_tokens = list(set(REL_TO_TOKEN.values()))+ \
                  list(set(GEN_TOKENS.values())) 
     added_tokens = [ 
@@ -463,7 +466,7 @@ def add_specials(tokenizer):
             for tok in new_tokens if not tok in cur_list
     ]
     added_tokens = cur_list + added_tokens
-    num_tokens += tokenizer.add_special_tokens({"additional_special_tokens":added_tokens})
+    num_tokens = tokenizer.add_special_tokens({"additional_special_tokens":added_tokens})
     return num_tokens
 
 def extend_tokenizer(tokenizer, tokens = []):

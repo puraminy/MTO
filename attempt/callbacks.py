@@ -186,6 +186,8 @@ class WBCallback(WandbCallback):
 
     def save_router(self, module, state):
         targets = module.target_encoders_idx
+        if targets is None or module.prompt_names is None:
+            return
         y_labels = [module.prompt_names[i] for i in targets]
         y_labels = [y.replace("tar-","") for y in y_labels]
         p_labels = []

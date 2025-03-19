@@ -22,7 +22,7 @@ def check_conflicts(model_args, data_args, training_args, adapter_args, kwargs):
         elif kwargs.method == "peft":
             pass
             #assert not kwargs.use_optimizer, "No need to use optimizer" 
-        elif kwargs.method == "pt":
+        elif kwargs.method == "pt" or "apt" in kwargs.method:
             if model_args.attn_method == "const":
                 pass
                 #assert model_args.route_method == "direct", "route method for const method must be direct"  

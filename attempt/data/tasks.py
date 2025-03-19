@@ -234,7 +234,7 @@ class AbstractTask(abc.ABC):
         for idx in all_indices:
             sample = dataset[idx]
             # Replace 'label' with your actual label field
-            label = sample['label']
+            label = sample['label'] if 'label' in sample else sample['target']
             if type(label) == float: 
                 label = round(label)
             label_counts[label].append(idx)
@@ -1471,6 +1471,7 @@ class MRPC(AbstractTask):
     labels_map = {
             "map1": {"0":"not","1":"are equal"},
             "map": {"0":"not_equivalent","1":"equivalent"},
+             "yn":{"0":"no", "1":"yes"},
             "map2": {"0":"not_duplicate","1":"duplicate"},
         #      "map2":{"0":"not_equal","1":"duplicate"}
         }
@@ -1523,7 +1524,9 @@ class COLA(AbstractTask):
                            "validation": "validation",
                            "test": "validation"}
     # labels_map = {"map":{"0": "inadmissible", "1":"acceptable"}
-    labels_map = {"map": {"0": "unacceptable", "1":"acceptable"}}
+    labels_map = {"map": {"0": "unacceptable", "1":"acceptable"},
+             "yn":{"0":"no", "1":"yes"}
+             }
     # labels_map = {"map":{"0": "A", "1":"B"}
 
     def load_dataset(self, split):
@@ -1628,6 +1631,7 @@ class SST2(Sentiment):
                            "test": "validation"}
     labels_map = {
             "map": {"0":"negative", "1":"positive"},
+             "yn":{"0":"no", "1":"yes"}
         }
     # labels_map = {"map":{"0":"bad", "1":"good"}
     # labels_map = {"map":{"0":"L", "1":"M"}
@@ -2283,6 +2287,7 @@ class QQP(AbstractTask):
     labels_map = {
             "map1": {"0":"not","1":"are equal"},
             "map": {"0":"not_duplicate","1":"duplicate"},
+             "yn":{"0":"no", "1":"yes"},
             "map2": {"0":"not_equal","1":"duplicate"},
             "map3": {"0":"different","1":"duplicate"},
         }
@@ -2315,6 +2320,7 @@ class MNLI(AbstractTask):
     # labels_map = {"map":{"0":"en", "1":"neutral", "2": "contradicts"}
     labels_map = {
             "map": {"0":"entailment", "1":"neutral", "2": "contradiction"},
+            "yn":{"0":"yes", "1":"neutral", "2":"no"}
             # "map2":{"0":"entailment", "1":"neutral", "2": "contradiction"}
         }
     # labels_map = {"map":{"0":"0", "1":"1", "2": "2"}
@@ -2465,9 +2471,11 @@ class QNLI(AbstractTask):
                            "test": "validation"}
     #rel_nat = "Can the question be answered by the passage?"
     rel_nat = "The logical relation between sentence and question is "
-    labels_map = {"map": {"0":"entailment", "1":"not_entailment"}}
+    labels_map = {
+         "map":{"0":"entailment", "1":"not_entailment"},
+         "yn":{"0":"yes", "1":"no"},
+    }
     # labels_map = {"map":{"0":"entails", "1":"irrelated"}
-    # labels_map = {"map":{"0":"yes", "1":"no"}
     # labels_map = {"map":{"0":"C", "1":"D"}
 
     def load_dataset(self, split):
@@ -2511,6 +2519,7 @@ class RTE(AbstractTask):
                            "test": "validation"}
     labels_map = {
             "map": {"0":"entailment", "1":"not_entailment"},
+             "yn":{"0":"yes", "1":"no"}
             # "map2":{"0":"not_duplicate", "1":"duplicate"}
         } # entailment nont_entailment
     # labels_map = {"map":{"0":"C", "1":"D"} # entailment nont_entailment

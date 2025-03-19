@@ -208,8 +208,17 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.prompt_encoders = []
         self.use_private_prompts = False
         self.embedding_dim = model_dim = config.d_model
-        # all prompt ids for all tasks
+        self.num_src_encoders = 0
+        self.source_encoders_idx = None
+        self.target_encoders_idx = None
         self.target_prompt_ids = []
+        self.task_prompt_ids = []
+        self.attn_scores = None
+        self.attn_mask = None
+        self.attn_mask_orig = None
+        self.attn_mask_learned = None
+        self.prompt_names = None
+        # all prompt ids for all tasks
         self.common_prompt_ids = [] 
         self.task_prompt_ids = []
         self.router = None
@@ -531,7 +540,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         k = num_masked_prompts
         targets = self.target_encoders_idx
         attn_scores = self.router #.index_select(0, targets)
-        if "any" in mask_type:
+        if True: # "any" in mask_type:
             selected_indices_per_row = [torch.nonzero(torch.ones_like(row))[:, -1] 
                     for row in attn_scores]
         else:
@@ -1188,7 +1197,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             #num_source_encoders = len([e for e in self.prompt_encoders if e.is_source]) + 2
             # prompt masks for all prompt tokens
             target_prompt_masks = self.get_target_prompt_ids_mask(input_ids)
-            self.adapter_config.prompt_masks = target_prompt_masks
+            self.prompt_masks = target_prompt_masks
             # exteract prompt ids of tasks in the batch
             target_prompt_ids = input_ids[target_prompt_masks].view(batch_size,-1) 
 
@@ -1413,7 +1422,10 @@ class AttentivePromptEncoder(torch.nn.Module):
                                             input_ids[i, j] = 0
                                             k += 1
 
-                            inputs_embeds[tmask]= masked_prompts.view(-1, self.model_dim)
+                            # inputs_embeds[tmask]= masked_prompts.view(-1, self.model_dim)
+                            inputs_embeds = inputs_embeds.clone()  # Avoid in-place modification
+                            inputs_embeds[tmask] = masked_prompts.view(-1, self.model_dim)
+
                             if not self.training: # or mylogs.is_debug(): 
                                 pass
                                 # assert torch.all((attn_scores >= 0) 
@@ -1434,21 +1446,23 @@ class AttentivePromptEncoder(torch.nn.Module):
                                 #            + self.compose_method + ":" + self.attn_method, 
                                 #    add_tags=False) 
                         else:
-                            self.adapter_config.soft_prompts=target_prompts.view(-1, 
+                            inputs_embeds = inputs_embeds.clone()  # Avoid in-place modification
+                            self.soft_prompts=target_prompts.view(-1, 
                                     self.model_dim)
                             inputs_embeds[target_prompt_masks]= target_prompts.view(-1, 
                                     self.model_dim)
                     else:
-                        self.adapter_config.soft_prompts=target_prompts.view(-1, 
+                        self.soft_prompts=target_prompts.view(-1, 
                                 self.model_dim)
+                        inputs_embeds = inputs_embeds.clone()  # Avoid in-place modification
                         inputs_embeds[target_prompt_masks]= target_prompts.view(-1, 
                                 self.model_dim)
                 else:
                     self.adapter_config.soft_prompts=target_prompts.view(-1, self.model_dim)
                     inputs_embeds[target_prompt_masks]=target_prompts.view(-1, 
                             self.model_dim)
-            return input_ids, att_mask 
-        return input_ids, att_mask
+            return input_ids, att_mask , inputs_embeds
+        return input_ids, att_mask, inputs_embeds
 
 
 
@@ -1456,7 +1470,7 @@ class PTModel(PeftModel):
     def __init__(self, nested_model, peft_config, attn_pt=None):
         super().__init__(nested_model, peft_config)
         self.nested_model = nested_model
-        self.attentive_prompt_encoder = attn_pt 
+        self.encoder = attn_pt 
 
     def forward(self, input_ids, 
         inputs_embeds=None, 
@@ -1468,12 +1482,13 @@ class PTModel(PeftModel):
         embedding_layer = self.nested_model.get_input_embeddings()
         inputs_embeds = embedding_layer(input_ids)
         mylogs.bp("fwd")
-        if self.attentive_prompt_encoder is not None:
-            input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
-                    input_ids, inputs_embeds, 
-                    #task_ids, 
-                    #task, 
-                    att_mask = attention_mask)
+        if self.encoder is not None:
+            input_ids, attention_mask, inputs_embeds = \
+                    self.encoder.prompt_encoders_forward(
+                        input_ids, inputs_embeds, 
+                        #task_ids, 
+                        #task, 
+                        att_mask = attention_mask)
 
         # inputs_embeds = torch.cat([attentive_embeddings, input_embeddings], dim=1)
         return self.nested_model(inputs_embeds=inputs_embeds, 
@@ -1483,12 +1498,85 @@ class PTModel(PeftModel):
 from transformers import PreTrainedModel
 from typing import Optional, Dict, Any
 import torch
+from transformers import Trainer
+import torch
+
+def entropy_loss(attention_weights):
+    """
+    Compute entropy loss to encourage diverse attention distribution.
+
+    Args:
+        attention_weights (torch.Tensor): Attention scores of shape (batch_size, num_heads, seq_len, seq_len)
+
+    Returns:
+        torch.Tensor: Entropy loss value
+    """
+    eps = 1e-8  # Avoid log(0)
+    attention_probs = attention_weights.mean(dim=1)  # Average over attention heads
+    entropy = -torch.sum(attention_probs * torch.log(attention_probs + eps), dim=-1)  # Compute entropy per batch
+    return entropy.mean()  # Return average entropy loss
+
+class CustomTrainer(Trainer):
+    def compute_loss2(self, model, inputs, return_outputs=False, **kwargs):
+        """
+        Compute the model loss with an entropy penalty for diverse attention.
+
+        Args:
+            model: The transformer model.
+            inputs: Input batch dictionary.
+            return_outputs (bool): Whether to return model outputs.
+
+        Returns:
+            Loss value (with entropy regularization).
+        """
+        outputs = model(**inputs)
+        loss = outputs.loss  # Standard task loss (e.g., cross-entropy)
+        
+        if model.encoder is not None:
+            attentions = model.encoder.router
+            attn_entropy_loss = entropy_loss(attentions)  # Use last layer attention
+            lambda_entropy = 0.1  # Weight for entropy penalty
+            loss = loss + lambda_entropy * attn_entropy_loss  # Add entropy penalty
+
+        return (loss, outputs) if return_outputs else loss
+    
+    def prediction_step(self, model, inputs, prediction_loss_only=False, ignore_keys=None):
+        """
+        Override the prediction step to use `.generate()` for sequence generation tasks.
+        """
+        # Ensure the model is in evaluation mode
+        model.eval()
+
+        # Extract input IDs and attention mask
+        input_ids = inputs.get("input_ids")
+        attention_mask = inputs.get("attention_mask")
+
+        # Generate predictions using the `.generate()` method
+        generated_tokens = model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=10,  # Adjust as needed
+            num_beams=1,    # Adjust as needed
+        )
+
+        # Prepare labels (if available)
+        labels = inputs.get("labels")
+
+        # Compute loss (if required)
+        loss = None
+        if prediction_loss_only:
+            with torch.no_grad():
+                outputs = model(**inputs)
+                loss = outputs.loss
+
+        return (loss, generated_tokens, labels)
+
 
 class CustomModelWrapper(PreTrainedModel):
     def __init__(self, nested_model, base_config, attn_pt=None):
         super().__init__(base_config)
         self.nested_model = nested_model
-        self.attentive_prompt_encoder = attn_pt
+        self.encoder = attn_pt
 
     def forward(self, input_ids: Optional[torch.Tensor] = None, 
                 inputs_embeds: Optional[torch.Tensor] = None, 
@@ -1505,9 +1593,10 @@ class CustomModelWrapper(PreTrainedModel):
             inputs_embeds = embedding_layer(input_ids)
         
         # Apply prompt tuning if enabled
-        if self.attentive_prompt_encoder is not None:
-            input_ids, attention_mask = self.attentive_prompt_encoder.prompt_encoders_forward(
-                input_ids, inputs_embeds, att_mask=attention_mask
+        if self.encoder is not None:
+            input_ids, attention_mask, inputs_embeds = \
+                self.encoder.prompt_encoders_forward(
+                    input_ids, inputs_embeds, att_mask=attention_mask
             )
 
         # Ensure decoder inputs are provided
@@ -1519,6 +1608,45 @@ class CustomModelWrapper(PreTrainedModel):
         )
         
         return outputs
+
+    def generate(self, input_ids: Optional[torch.Tensor] = None,
+                 attention_mask: Optional[torch.Tensor] = None,
+                 **kwargs):
+        """
+        Generate sequences using the nested model.
+        """
+        self.nested_model.eval()
+        # Apply prompt tuning if enabled
+        if self.encoder is not None:
+            self.encoder.training = False  # Ensure encoder is in eval mode
+
+            # Get the embedding layer from the base model
+            embedding_layer = self.nested_model.get_input_embeddings()
+
+            # Convert input_ids to embeddings if provided
+            if input_ids is not None:
+                inputs_embeds = embedding_layer(input_ids)
+            else:
+                inputs_embeds = None
+
+            # Apply prompt tuning
+            input_ids, attention_mask, inputs_embeds = \
+                self.encoder.prompt_encoders_forward(
+                    input_ids, inputs_embeds, att_mask=attention_mask
+                )
+
+            # Pass inputs_embeds to generate
+            kwargs["inputs_embeds"] = inputs_embeds
+        else:
+            # If no prompt tuning, pass input_ids directly
+            kwargs["input_ids"] = input_ids
+
+        # Ensure attention_mask is passed
+        if attention_mask is not None:
+            kwargs["attention_mask"] = attention_mask
+
+        # Delegate generation to the nested model
+        return self.nested_model.generate(**kwargs)
 
 # === Setup for Training === #
 def setup_training():

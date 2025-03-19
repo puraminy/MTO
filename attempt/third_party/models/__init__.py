@@ -4,4 +4,5 @@ from .peft.modeling_peft import PTModel
 from .peft.modeling_peft import AttentivePromptEncoder
 from .peft.modeling_peft import AttnConfig
 from .peft.modeling_peft import CustomModelWrapper
+from .peft.modeling_peft import CustomTrainer
 

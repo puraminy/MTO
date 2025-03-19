@@ -28,7 +28,8 @@ from pathlib import Path
 import glob
 from data import AutoPostProcessor
 # from third_party.models import T5Config, T5ForConditionalGeneration
-from third_party.models import PTModel, AttentivePromptEncoder, AttnConfig, CustomModelWrapper 
+from third_party.models import (PTModel, AttentivePromptEncoder, 
+        AttnConfig, CustomModelWrapper, CustomTrainer)
 from transformers import Trainer #, TrainingArguments, DataCollatorForSeq2Seq
 import ipdb; 
 
@@ -95,6 +96,20 @@ logger = logging.getLogger(__name__)
 global_scores = []
 global_y_labels = []
 global_x_labels = []
+
+from transformers import LogitsProcessor
+import torch
+
+class ForcedTokensLogitsProcessor(LogitsProcessor):
+    def __init__(self, valid_token_ids):
+        self.valid_token_ids = valid_token_ids
+
+    def __call__(self, input_ids, scores):
+        # Mask out all tokens not in valid_token_ids
+        for token_id in range(scores.shape[1]):
+            if token_id not in self.valid_token_ids:
+                scores[:, token_id] = -float("inf")
+        return scores
 
 from peft import PromptTuningConfig, get_peft_model, PeftConfig
 from peft import (
@@ -568,8 +583,12 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
         if not exp_conf and confs:
             exp_conf = confs[0]
         print("Experiment config:", exp_conf)
-        with open(exp_conf) as f:
-            exp_args = json.load(f)
+        try:
+            with open(exp_conf) as f:
+                exp_args = json.load(f)
+        except FileNotFoundError as e:
+            print(e)
+            raise ValueError( f"Looking for *{cfg_pat}* {confs} were matched: " + exp_conf)
         prev_exp_folder = exp_args["output_dir"]
         prev_save_path = exp_args.get("save_path","")
         not_copy_prev_exp = not_copy_prev_exp or exp_args.get("not_copy_prev_exp", False)
@@ -609,8 +628,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    mylogs.bp("start") 
    if experiment == "self":
        save_path = os.path.join(os.getcwd(), "output")
-   if prev_exp_folder and not new_exp_folder:
-       save_path = prev_save_path
+   #if prev_exp_folder and not new_exp_folder:
+   #    save_path = prev_save_path
    elif not reval or new_exp_folder:
        if new_exp_folder and save_path:
           relative_path = os.path.relpath(save_path, log_path)
@@ -893,8 +912,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        args = {**exp_args, **args}
        #_output_dir.append(str(args["expid"]))
        output_dir = save_path 
-       #if exp_conf:
-       #    output_dir = exp_args["output_dir"]
+       if exp_conf and not new_exp_folder:
+            output_dir = exp_args["output_dir"]
        if merge:
            ee = args["expid"]
            exp_file = args[merge]
@@ -918,17 +937,18 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            eee = ee
            _output_dir = label + "-" + str(ee)
            _output_dir = _output_dir.strip("-")
-           output_dir = os.path.join(save_path, _output_dir)
+           output_dir = os.path.join(output_dir, _output_dir)
            #if Path(output_dir).exists() and not repeat:
            #    mylogs.minfo(f"The folder {output_dir} already exists....")
            #    ans = input("Do you want to skip the experiment?")
            #    if True: #ans == "y":
            #        continue
            if not reval:
+               b_dir = output_dir
                while Path(output_dir).exists():
                    ee += 1 
                    _output_dir = label + str(ee)
-                   output_dir = os.path.join(save_path, _output_dir)
+                   output_dir = os.path.join(b_dir, _output_dir)
            if label:
                expid = experiment.split("/")[-1] + "-" + label + "-" + str(eee)
                expid = expid.strip("-")
@@ -1151,7 +1171,7 @@ def train(**kwargs):
 
     def parse_prompts_conf(label):
         flags = {
-            'add_target': kwargs.get("add_target", False),
+            'add_target': False, # kwargs.get("add_target", False),
             'use_source_prompts': False,
             'load_source_prompts': False,
             'learn_source_prompts': False,
@@ -1278,9 +1298,11 @@ def train(**kwargs):
 
     
     num_prompts = kwargs.setdefault("num_prompts", 1) 
-    if  adapter_args.num_prompt_tokens is None:
-        if cross_pt or adapter_args.prompt_tuning:
+    if cross_pt or adapter_args.prompt_tuning:
+        if  adapter_args.num_prompt_tokens is None:
             raise ValueError("Number of promt tokens is None, set a value for it")
+        if not "pt" in data_args.template:
+            raise ValueError("No prompt in template")
     target_prompt_length = adapter_args.num_prompt_tokens
     source_prompt_length = adapter_args.num_prompt_tokens
     use_source_prompts = kwargs.setdefault("use_source_prompts", True)
@@ -1408,7 +1430,7 @@ def train(**kwargs):
     task_args["mapping"] = kwargs.setdefault("mapping", "map")
     task_args["use_cache_file"] = kwargs.setdefault("use_cache_file", True)
     task_args["use_config"] = kwargs.setdefault("use_config", True)
-    task_args["equal_labels"] = kwargs.setdefault("equal_labels", False)
+    task_args["equal_labels"] = kwargs.setdefault("equal_labels", True)
     task_args["map_style"] = kwargs.setdefault("map_style", "map")
     task_args["multi_choice"] = kwargs.setdefault("multi_choice", False)
     task_args["train_samples"] = data_args.max_train_samples
@@ -1424,7 +1446,7 @@ def train(**kwargs):
                                     adapter_args.num_prompt_tokens)
     task_args["fixed_length_prompt"] = adapter_args.fixed_length_prompt
     input_template = data_args.template
-    if method == "pt" and not "ptar" in input_template:
+    if (method == "pt" or cross_pt) and not "ptar" in input_template:
         if input_template in ["unsup-nat", "sup-nat"]:
             ptemp = "ptar"
         else:
@@ -1610,6 +1632,7 @@ def train(**kwargs):
             warmup_steps = training_args.warmup_steps
         else:
             warmup_steps = 0.2 * steps
+            training_args.warmup_steps = warmup_steps
         total_steps = steps + warmup_steps + 5
     
     mylogs.bp("steps")
@@ -1788,7 +1811,10 @@ def train(**kwargs):
     ######################## My code pppppp
     
     mylogs.bp("router")
-    prompts_dir = model_args.prompt_encoders_dir
+    if reval:
+        prompts_dir = model_args.prompt_encoders_dir
+    else:
+        prompts_dir = op.join(mylogs.pretPath, "prompts") 
     if "prompts_prefix" in main_vars or "save_to_prompts_dir" in main_vars:
         prompts_dir = op.join(mylogs.pretPath, "prompts") 
     elif prompts_dir == "save_path":
@@ -1850,8 +1876,9 @@ def train(**kwargs):
         router_prefix = prompts_prefix
 
     shared_mat = None
-    if method == "pt":
-        added = add_specials(tokenizer)
+    added = add_general_specials(tokenizer)
+    if method == "pt" or cross_pt:
+        added = add_pt_specials(tokenizer)
         logger.info("%s tokens was addded", added)
         new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
         model.resize_token_embeddings(new_vocab_size)
@@ -2110,14 +2137,14 @@ def train(**kwargs):
     rgrad = len([p for p in model.parameters() if p.requires_grad])
     nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     mylogs.plog.info("Before freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
-    if attn_pt is not None:
+    if attn_pt is not None: # and adapter_args.freeze_model is True:
         model = modify_model_after_init(
-            model, training_args, adapter_args, adapter_config)
+            wrapped_model, training_args, adapter_args, adapter_config)
    
     learn_loaded_prompts = kwargs.setdefault("learn_loaded_prompts", True) 
     learn_private_prompts = kwargs.setdefault("learn_private_prompts", True) 
     requires_grad_encoders = []
-    if method == "pt":
+    if method == "pt" or cross_pt:
         for encoder in prompt_encoders: 
             if encoder.is_private and learn_private_prompts:
                 for n,p in encoder.named_parameters():
@@ -2147,7 +2174,6 @@ def train(**kwargs):
 
     rgrad = len([p for p in model.parameters() if p.requires_grad])
     nrgrad = len([p for p in model.parameters() if not p.requires_grad])
-    exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
     mylogs.minfo("After freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
     # mylogs.minfo("Encoders require grad: %s",requires_grad_encoders)
     mylogs.bp("freeze")
@@ -2493,7 +2519,7 @@ def train(**kwargs):
     pvt_prompt_params = []
     mylogs.bp("opt")
     learning_rate = training_args.learning_rate
-    if method == "pt":
+    if method == "pt" or cross_pt:
         if "learning_rate" in main_vars:
             target_prompt_learning_rate = learning_rate
         learning_rate = target_prompt_learning_rate
@@ -2583,29 +2609,32 @@ def train(**kwargs):
     # optimizer = AdamW(model.prompt_encoder.parameters(), lr=1e-4)  # Optimize only soft prompts
     if cross_pt:
        callbacks = [ptlr_callback, wb_callback, anneal_callback]
+    rgrad = len([p for p in wrapped_model.parameters() if p.requires_grad])
+    nrgrad = len([p for p in wrapped_model.parameters() if not p.requires_grad])
+    exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
     if kwargs.use_optimizer: #TODO remove condition and the else part 
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
-        trainer = Trainer(
+        trainer = CustomTrainer(
             model=wrapped_model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset= eval_ds,
-     #       data_info=data_info,
+         #   data_info=data_info,
             tokenizer=tokenizer,
             data_collator=data_collator,
-     #       compute_metrics=compute_metrics if training_args.predict_with_generate else None,
-     #       multi_task_compute_metrics=compute_metrics_fn,
-     #       evaluation_metrics=task_metric,
+          #  compute_metrics=compute_metrics if training_args.predict_with_generate else None,
+         #   multi_task_compute_metrics=compute_metrics_fn,
+         #   evaluation_metrics=task_metric,
      #       save_checkpoint = kwargs.setdefault("save_checkpoint", False),
      #       shared=model_args.shared_attn,
-           # callbacks = callbacks, 
+             callbacks = callbacks, 
      #       shuffle = trainer_shuffle,
              optimizers=(optim, scheduler)
         )
     else:
-        # trainer = Seq2SeqTrainer(
-        trainer = Trainer(
+        trainer = Seq2SeqTrainer(
+        # trainer = Trainer(
             model=wrapped_model,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
@@ -2705,7 +2734,7 @@ def train(**kwargs):
         #    load_model(best_chk_path, lsp)
 
         # Save prompts
-        if method == "pt":
+        if method == "pt" or cross_pt:
             #if not cross_pt: 
             #    prompts_prefix = "pt_" + prompts_prefix 
             #else: 
@@ -3062,25 +3091,31 @@ def train(**kwargs):
         def evaluate_test(task, test_dataset, save_to, ds_name, auto_task, 
                 gen_conf = {}, use_cache=False):
             mylogs.bp("ttt")
+            gen_kwargs = {
+                    "num_beams":1,
+                    "max_length":10,
+                    }
             if attn_pt is not None:
                 attn_pt.gen_conf = gen_conf
             if use_cache and task in no_mask_preds:
                 predictions, labels, metrics = no_mask_preds[task] 
             else:
                 predictions, labels, metrics = trainer.predict(
-                    # gen_conf = gen_conf,
+                 #  gen_conf = gen_conf,
                     test_dataset=test_dataset,
-                    #max_length=data_args.test_max_target_length, 
-                    #num_beams=data_args.num_beams,
+                    #max_length=10, #data_args.test_max_target_length, 
                     metric_key_prefix="test", 
-                    #task=task
+                 #   task=task
                 )
-            if peft_method:
-                predicted_token_ids = predictions[1].argmax(axis=-1)
-            else:
-                predicted_token_ids = predictions[0].argmax(axis=-1)
+            predicted_token_ids = predictions
+            if False: #predictions.size() > 2:
+                if peft_method:
+                    predicted_token_ids = predictions[1].argmax(axis=-1)
+                else:
+                    predicted_token_ids = predictions[0].argmax(axis=-1)
+            predicted_token_ids = np.clip(predicted_token_ids, 0, tokenizer.vocab_size - 1)
 
-            if method == "pt" and gen_conf["mask_type"].startswith("no-mask"):
+            if (method == "pt" or cross_pt) and gen_conf["mask_type"].startswith("no-mask"):
                 no_mask_preds[task] = (predictions, labels, metrics)
             
             mylogs.bp("gen")
@@ -3091,7 +3126,7 @@ def train(**kwargs):
             # sssssssssss
             #predictions = np.argmax(predictions, axis=1)
             #predictions = tokenizer.batch_decode(predictions)
-            df = test_dataset.to_pandas()
+            df = test_dataset.to_pandas().copy()
             if bp == "test": breakpoint()
             df["pred_text1"] = ""
             df["prefix"] = ds_name
@@ -3203,8 +3238,6 @@ def train(**kwargs):
         ################ Draw image
         def save_image(folder, model, score_dict, spec, p_labels=None, 
                 square=False, annot=True, vmin=None, vmax=None, mask_zeros=False):
-            if not cross_pt:
-                return
             targets = attn_pt.target_encoders_idx
             mylogs.bp("save_image")
             y_labels = [attn_pt.prompt_names[i] for i in targets]
@@ -3294,7 +3327,7 @@ def train(**kwargs):
         mask_num_start = 0
         if masking_list:
             gen_masks_list = []
-        if method == "pt":
+        if method == "pt" or cross_pt:
             prompt_names = attn_pt.prompt_names
         for masking in masking_list:
             gen_masks = {}
@@ -3308,7 +3341,7 @@ def train(**kwargs):
             mylogs.bp("nrp")
             gen_masks["no-mask_"+mask_type] = None
             if num_masks == 0: 
-                if mask_type == "remove" or mask_type == "keeponly":
+                if False: #mask_type == "remove" or mask_type == "keeponly":
                     router = attn_pt.router
                     positive_indices_per_row = [torch.nonzero(row > 0)[:, -1] 
                             for row in router]
@@ -3366,7 +3399,7 @@ def train(**kwargs):
             exp_folder = Path(training_args.output_dir).parent
         exp_folder_name = Path(training_args.output_dir).stem
         exp_folder = str(exp_folder) 
-        if not method == "pt":
+        if not method == "pt" and not cross_pt:
             eval_folder = training_args.output_dir
             for idx, (task, test_dataset) in enumerate(test_datasets.items()):
                 auto_task = auto_tasks[task]
@@ -3459,7 +3492,7 @@ def train(**kwargs):
                         eval_folders[test_key].append(eval_folder_name)
                         if not test_key in task_scores[rm]:
                             task_scores[rm][test_key] = {}
-                        if method == "pt":
+                        if method == "pt" or cross_pt:
                             targets = attn_pt.target_encoders_idx
                             y_labels = [attn_pt.prompt_names[i] for i in targets]
                             y_labels = [y.replace("tar-","") for y in y_labels]
@@ -3504,7 +3537,7 @@ def train(**kwargs):
                                 counter += 1
                                 continue
                             use_cache = False
-                            if method == "pt": 
+                            if method == "pt" or cross_pt: 
                                 if mask is not None: 
                                     mylogs.bp("cache")
                                     task_index = y_labels.index(task)
@@ -3551,7 +3584,7 @@ def train(**kwargs):
                         if mask is None:
                             full_attn_mat = attn_pt.attn_scores
                         mean_score = total_score / counter
-                        if method == "pt":
+                        if method == "pt" or cross_pt:
                             targets = attn_pt.target_encoders_idx
                             router_scores = attn_pt.router.index_select(0, targets)
                             tlen = router_scores.size(0)
@@ -3734,7 +3767,7 @@ def train(**kwargs):
                 new_im.save(os.path.join(training_args.output_dir, "images", fname))
 
 
-        if cross_pt:
+        if cross_pt and False:
             targets = attn_pt.target_encoders_idx
             scores_matrix = attn_pt.attn_scores.index_select(0, targets)
             router_scores = attn_pt.router.index_select(0, targets)
@@ -3807,7 +3840,7 @@ def train(**kwargs):
                      prefix_dir = prefix_dir,
                      attn_tuning=cross_pt,
                      shared_attn=model_args.shared_attn, num_target=config.num_target, task_name=data_args.task_name)
-            if method == "pt":
+            if method == "pt" or cross_pt:
                 save_to_prompts_dir = kwargs.setdefault("save_to_prompts_dir", False) 
                 mylogs.bp("store")
                 if save_to_prompts_dir:
