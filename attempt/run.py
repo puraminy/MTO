@@ -1716,6 +1716,9 @@ def train(**kwargs):
     else:
         config.prefix_num = model_args.prefix_num
     config.num_target = len(data_args.task_name)
+    config.do_entropy_loss = kwargs.get("do_entropy_loss", False)
+    config.lambda_entropy = kwargs.get("lambda_entropy", 0.0)
+    config.warmup_steps = warmup_steps
     config.temperature = model_args.temperature
     config.learned_temperature = model_args.learned_temperature
     sign_router = kwargs.setdefault("sign_router", False) 

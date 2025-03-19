@@ -12,6 +12,34 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.checkpoint import checkpoint
 import numpy as np
 
+class AnnealLambda:
+    def __init__(self, module, lambda_start=0.0, lambda_max=0.1, warmup_steps=5000, target_entropy=0.5, entropy_tolerance=0.1):
+        self.module = module
+        self.lambda_start = lambda_start
+        self.lambda_max = lambda_max
+        self.warmup_steps = warmup_steps
+        self.target_entropy = target_entropy
+        self.entropy_tolerance = entropy_tolerance
+        self.current_lambda = lambda_start
+
+    def anneal(self, step):
+        module = self.module
+        if step < self.warmup_steps:
+            self.current_lambda = self.lambda_start + (self.lambda_max - self.lambda_start) * (step / self.warmup_steps)
+        else:
+            # Adaptive scaling based on entropy deviation
+            if hasattr(module, "router"):
+                entropy_value = relaxed_bernoulli_entropy(module.router).item()
+
+                if entropy_value < self.target_entropy - self.entropy_tolerance:
+                    self.current_lambda *= 1.05  # Increase λ if entropy is too low
+                elif entropy_value > self.target_entropy + self.entropy_tolerance:
+                    self.current_lambda *= 0.95  # Decrease λ if entropy is too high
+
+        # Ensure lambda stays within bounds
+        self.current_lambda = min(self.lambda_max, max(0.0, self.current_lambda))
+        return self.current_lambda
+
 class Anneal:
     def __init__(self, temperature, anneal_dir, anneal_rate, anneal_min, anneal_type="exp"):
         self.cur_step = 0
@@ -250,7 +278,13 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.anneal_type = config.anneal_type
         self.temperature = config.temperature
 
-        self.anneal_router = Anneal(self.temperature, 
+        self.lambda_entropy = config.lambda_entropy
+        self.do_entropy_loss = config.do_entropy_loss
+        self.anneal_router_entropy = AnnealLambda(module=self, 
+                lambda_start=self.lambda_entropy,
+                warmup_steps=config.warmup_steps)
+
+        self.aneal_router_temperature = Anneal(self.temperature, 
                 anneal_dir = self.anneal_dir, 
                 anneal_rate = self.anneal_rate, 
                 anneal_min = self.anneal_min, 
@@ -597,8 +631,9 @@ class AttentivePromptEncoder(torch.nn.Module):
         return attn_mask.long()
 
     def anneal(self, i_step):
-         mylogs.bp("anneal")
-         self.temperature = self.anneal_router.anneal(i_step)
+         self.temperature = self.aneal_router_temperature.anneal(i_step)
+         if self.do_entropy_loss is True:
+             self.lambda_entropy = self.anneal_router_entropy.anneal(i_step)
          if self.do_anneal_thresh is True:
              self.sel_thresh = self.anneal_thresh.anneal(i_step)
 
@@ -1501,6 +1536,26 @@ import torch
 from transformers import Trainer
 import torch
 
+import torch
+
+def relaxed_bernoulli_entropy(router_logits):
+    """
+    Compute entropy for relaxed Bernoulli probabilities.
+
+    Args:
+        router_logits (torch.Tensor): Learnable routing logits (before sigmoid).
+
+    Returns:
+        torch.Tensor: Entropy loss value.
+    """
+    probs = torch.sigmoid(router_logits)  # Convert logits to probabilities
+    eps = 1e-8  # Avoid log(0)
+
+    # Compute entropy: H(p) = - p log(p) - (1 - p) log(1 - p)
+    entropy = -probs * torch.log(probs + eps) - (1 - probs) * torch.log(1 - probs + eps)
+
+    return entropy.mean()  # Return mean entropy loss
+
 def entropy_loss(attention_weights):
     """
     Compute entropy loss to encourage diverse attention distribution.
@@ -1517,9 +1572,9 @@ def entropy_loss(attention_weights):
     return entropy.mean()  # Return average entropy loss
 
 class CustomTrainer(Trainer):
-    def compute_loss2(self, model, inputs, return_outputs=False, **kwargs):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         """
-        Compute the model loss with an entropy penalty for diverse attention.
+        Compute the model loss with entropy regularization on router logits.
 
         Args:
             model: The transformer model.
@@ -1532,14 +1587,17 @@ class CustomTrainer(Trainer):
         outputs = model(**inputs)
         loss = outputs.loss  # Standard task loss (e.g., cross-entropy)
         
-        if model.encoder is not None:
-            attentions = model.encoder.router
-            attn_entropy_loss = entropy_loss(attentions)  # Use last layer attention
-            lambda_entropy = 0.1  # Weight for entropy penalty
-            loss = loss + lambda_entropy * attn_entropy_loss  # Add entropy penalty
-
+        # Add entropy regularization on router logits
+        if hasattr(model.encoder, "router"):
+            if model.encoder.do_entropy_loss is True:
+                router_entropy_loss = relaxed_bernoulli_entropy(model.encoder.router)
+                lambda_entropy = model.encoder.lambda_entropy # 0.1  # Weight for entropy penalty
+                loss = loss + lambda_entropy * router_entropy_loss  # Add entropy penalty
+        
         return (loss, outputs) if return_outputs else loss
-    
+
+
+
     def prediction_step(self, model, inputs, prediction_loss_only=False, ignore_keys=None):
         """
         Override the prediction step to use `.generate()` for sequence generation tasks.

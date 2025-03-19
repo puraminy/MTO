@@ -41,6 +41,8 @@
   "lr":"learning_rate",
   "cross":"cross_prefix",
   "addp":"add_prefix",
+  "lamb":"lambda_entropy",
+  "ent":"do_entropy_loss",
   "cmm":"compose_method",
   "cmt":"compose_target",
   "gcmm":"gen_compose_method",
