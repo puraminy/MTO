@@ -681,11 +681,11 @@ class AttentivePromptEncoder(torch.nn.Module):
          if self.do_anneal_thresh is True:
              self.sel_thresh = self.anneal_thresh.anneal(i_step)
 
-    def update_entropy_loss(logits):
+    def update_entropy_loss(self, probs):
         loss = 0
         if self.do_entropy_loss is True:
-            router_entropy_loss = relaxed_bernoulli_entropy(logits)
-            lambda_entropy = self.lambda_entropy # 0.1  # Weight for entropy penalty
+            router_entropy_loss = entropy_loss(probs)
+            lambda_entropy = 0.1 # self.lambda_entropy # 0.1  # Weight for entropy penalty
             loss = lambda_entropy * router_entropy_loss  # Add entropy penalty
         self.entropy_loss = loss
 
@@ -847,7 +847,6 @@ class AttentivePromptEncoder(torch.nn.Module):
 
             if self.training: # and self.learn_attention:
                 logits = router
-                self.update_entropy_loss(logits)
                 mylogs.bp("rbsample")
                 rb_scores = RelaxedBernoulli(temperature=self.temperature, 
                     logits=logits).rsample()            
@@ -882,6 +881,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             method = self.norm_method.replace("before_","")
             attn_scores = normalize_scores(attn_scores, method, is_training=self.training) 
 
+        self.update_entropy_loss(attn_scores)
         #if compose_method in ["cat","concat","catw"]: #,"pool","mpool"]:
         #    num_attend_to = (num_targets * attend_for.size(2)) // self.src_prompt_dim
         #    num_attend_to = num_attend_to // num_targets
