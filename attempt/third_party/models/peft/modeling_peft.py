@@ -40,6 +40,41 @@ class AnnealLambda:
         self.current_lambda = min(self.lambda_max, max(0.0, self.current_lambda))
         return self.current_lambda
 
+import numpy as np
+
+class AnnealTemperatureDynamic:
+    def __init__(self, module, temp_start=1.0, temp_min=0.1, warmup_steps=5000, 
+                 target_entropy=0.5, entropy_tolerance=0.1, anneal_type="exp"):
+        self.module = module
+        self.temp_start = temp_start
+        self.temp_min = temp_min
+        self.warmup_steps = warmup_steps
+        self.target_entropy = target_entropy
+        self.entropy_tolerance = entropy_tolerance
+        self.current_temp = temp_start
+        self.anneal_type = anneal_type
+
+    def anneal(self, step):
+        module = self.module
+
+        # Warm-up phase (gradual reduction)
+        if step < self.warmup_steps:
+            self.current_temp = self.temp_start - (self.temp_start - self.temp_min) * (step / self.warmup_steps)
+        else:
+            # Adaptive control based on entropy deviation
+            if hasattr(module, "router"):
+                entropy_value = relaxed_bernoulli_entropy(module.router).item()
+
+                if entropy_value < self.target_entropy - self.entropy_tolerance:
+                    self.current_temp *= 1.05  # Increase temperature (encourage smoother probabilities)
+                elif entropy_value > self.target_entropy + self.entropy_tolerance:
+                    self.current_temp *= 0.95  # Decrease temperature (sharpen probabilities)
+
+        # Ensure temperature stays within bounds
+        self.current_temp = max(self.temp_min, self.current_temp)
+        return self.current_temp
+
+
 class Anneal:
     def __init__(self, temperature, anneal_dir, anneal_rate, anneal_min, anneal_type="exp"):
         self.cur_step = 0
@@ -283,6 +318,11 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.do_entropy_loss = config.do_entropy_loss
         self.anneal_router_entropy = AnnealLambda(module=self, 
                 lambda_start=self.lambda_entropy,
+                warmup_steps=config.warmup_steps)
+
+        self.aneal_router_temperature_dynamic = AnnealTemperatureDynamic(
+                self.temperature,
+                anneal_min, 
                 warmup_steps=config.warmup_steps)
 
         self.aneal_router_temperature = Anneal(self.temperature, 
@@ -632,7 +672,10 @@ class AttentivePromptEncoder(torch.nn.Module):
         return attn_mask.long()
 
     def anneal(self, i_step):
-         self.temperature = self.aneal_router_temperature.anneal(i_step)
+         if self.anneal_type = "dyn":
+             self.temperature = self.aneal_router_temperature_dynamic.anneal(i_step)
+         else:
+             self.temperature = self.aneal_router_temperature.anneal(i_step)
          if self.do_entropy_loss is True:
              self.lambda_entropy = self.anneal_router_entropy.anneal(i_step)
          if self.do_anneal_thresh is True:
