@@ -279,6 +279,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.temperature = config.temperature
 
         self.lambda_entropy = config.lambda_entropy
+        self.entropy_loss = 0
         self.do_entropy_loss = config.do_entropy_loss
         self.anneal_router_entropy = AnnealLambda(module=self, 
                 lambda_start=self.lambda_entropy,
@@ -637,6 +638,14 @@ class AttentivePromptEncoder(torch.nn.Module):
          if self.do_anneal_thresh is True:
              self.sel_thresh = self.anneal_thresh.anneal(i_step)
 
+    def update_entropy_loss(logits):
+        loss = 0
+        if self.do_entropy_loss is True:
+            router_entropy_loss = relaxed_bernoulli_entropy(logits)
+            lambda_entropy = self.lambda_entropy # 0.1  # Weight for entropy penalty
+            loss = lambda_entropy * router_entropy_loss  # Add entropy penalty
+        self.entropy_loss = loss
+
     ################# MyCode fffffffffff
     def attend_input(self, inputs_embeds, src_prompts, 
             target_prompts, add_target, source_idx=None, 
@@ -795,6 +804,7 @@ class AttentivePromptEncoder(torch.nn.Module):
 
             if self.training: # and self.learn_attention:
                 logits = router
+                self.update_entropy_loss(logits)
                 mylogs.bp("rbsample")
                 rb_scores = RelaxedBernoulli(temperature=self.temperature, 
                     logits=logits).rsample()            
@@ -1586,13 +1596,8 @@ class CustomTrainer(Trainer):
         """
         outputs = model(**inputs)
         loss = outputs.loss  # Standard task loss (e.g., cross-entropy)
-        
-        # Add entropy regularization on router logits
-        if hasattr(model.encoder, "router"):
-            if model.encoder.do_entropy_loss is True:
-                router_entropy_loss = relaxed_bernoulli_entropy(model.encoder.router)
-                lambda_entropy = model.encoder.lambda_entropy # 0.1  # Weight for entropy penalty
-                loss = loss + lambda_entropy * router_entropy_loss  # Add entropy penalty
+        if model.encoder.do_entropy_loss is True:
+            loss = loss + model.encoder.entropy_loss  # Add entropy penalty
         
         return (loss, outputs) if return_outputs else loss
 
