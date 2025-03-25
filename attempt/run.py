@@ -937,7 +937,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            eee = ee
            _output_dir = label + "-" + str(ee)
            _output_dir = _output_dir.strip("-")
-           output_dir = os.path.join(output_dir, _output_dir)
+           output_dir = os.path.join(save_path, _output_dir)
            #if Path(output_dir).exists() and not repeat:
            #    mylogs.minfo(f"The folder {output_dir} already exists....")
            #    ans = input("Do you want to skip the experiment?")
@@ -960,6 +960,9 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        if repeat:
           args["expid"] += "-rep"
        args["output_dir"] = "%" + output_dir 
+       if not reval or not "load_model_dir" in exp_args:
+           exp_args["load_model_dir"] = output_dir 
+           args["load_model_dir"] = output_dir 
        _conf = json.dumps(args, indent=2)
        if preview == "conf":
            print(f"================ {ii}/{total} =====================")
@@ -1291,11 +1294,18 @@ def train(**kwargs):
 
     if exclude_tasks or include_tasks:
         tasks = []
+        tasks_config_names = []
+        ii = 0
         for t in data_args.task_name + include_tasks:
             if not t in exclude_tasks and not t in tasks:
                 tasks.append(t)
+                tasks_config_names.append(data_args.dataset_config_name[ii])
+            ii += 1
         data_args.task_name = tasks
-
+        # TODO the corresponding config names must be excluded
+        data_args.dataset_config_name = tasks_config_names
+        data_args.eval_dataset_config_name = tasks_config_names
+        data_args.test_dataset_config_name = tasks_config_names
     
     num_prompts = kwargs.setdefault("num_prompts", 1) 
     if cross_pt or adapter_args.prompt_tuning:
@@ -1446,7 +1456,7 @@ def train(**kwargs):
                                     adapter_args.num_prompt_tokens)
     task_args["fixed_length_prompt"] = adapter_args.fixed_length_prompt
     input_template = data_args.template
-    if (method == "pt" or cross_pt) and not "ptar" in input_template:
+    if (method == "pt" or cross_pt) and not ("ptar" in input_template or "pt" in input_template):
         if input_template in ["unsup-nat", "sup-nat"]:
             ptemp = "ptar"
         else:
@@ -1737,7 +1747,7 @@ def train(**kwargs):
 
     # Initialize custom model with attentive prompt embedding
     attn_pt = None
-    if config.attn_tuning:
+    if method == "pt" or cross_pt:
         attn_pt = AttentivePromptEncoder(config, adapter_config)
     
     wrapped_model = model
@@ -2611,7 +2621,9 @@ def train(**kwargs):
     callbacks = []
     # optimizer = AdamW(model.prompt_encoder.parameters(), lr=1e-4)  # Optimize only soft prompts
     if cross_pt:
-       callbacks = [ptlr_callback, wb_callback, anneal_callback]
+       callbacks = [ptlr_callback, anneal_callback]
+    if save_router_image:
+        callbacks.append(wb_callback)
     rgrad = len([p for p in wrapped_model.parameters() if p.requires_grad])
     nrgrad = len([p for p in wrapped_model.parameters() if not p.requires_grad])
     exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
@@ -3334,6 +3346,8 @@ def train(**kwargs):
             prompt_names = attn_pt.prompt_names
         for masking in masking_list:
             gen_masks = {}
+            if masking is None:
+                continue
             if not "-" in masking:
                 masking = "0-" + masking + "-1"
             nn, mask_type, mm = masking.split("-") 
@@ -3599,7 +3613,8 @@ def train(**kwargs):
                                         rsim[i][j] = cos(router_scores[i][:], 
                                                 router_scores[j][:])
                             vmin = 0 if tlen <=3 else None
-                            save_image(eval_folder, model, {"rsim":rsim}, 
+                            if cross_pt:
+                                save_image(eval_folder, model, {"rsim":rsim}, 
                                         annot=True, square=True, vmin=vmin, vmax=1,
                                         spec = norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
@@ -3608,7 +3623,8 @@ def train(**kwargs):
                             if multi_tasking:
                                 start = 0 if add_or_attend_input else 1 
                                 router_scores = router_scores[:,start:slen+tlen + 1]
-                            save_image(eval_folder, model, {"router":router_scores}, 
+                            if cross_pt:
+                                save_image(eval_folder, model, {"router":router_scores}, 
                                         spec = norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
                                                 + " | {:.2f}".format(mean_score))
@@ -3649,16 +3665,17 @@ def train(**kwargs):
                             #if len(torch.nonzero(scores_matrix)) < 1:
                             #    start = slen if add_or_attend_input else slen + 1 
                             #    scores_matrix[:tlen, start: start + tlen +1] = torch.eye(tlen)
-                            save_image(eval_folder, model, {"score":scores_matrix}, 
+                            if cross_pt:
+                                save_image(eval_folder, model, {"score":scores_matrix}, 
                                         square = square,
                                         spec = norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
                                                 + " | {:.2f}".format(mean_score))
-                            score_dict= {"sim":sim.round(decimals=2)} #, "rsim": rsim}
-                            save_image(eval_folder, model, score_dict, 
-                                    annot=True,
-                                    square=True,
-                                    spec = norm_method + " | {:.2f}".format(mean_score))
+                                score_dict= {"sim":sim.round(decimals=2)} #, "rsim": rsim}
+                                save_image(eval_folder, model, score_dict, 
+                                        annot=True,
+                                        square=True,
+                                        spec = norm_method + " | {:.2f}".format(mean_score))
 
                             if mask is not None:
                                 mask_matrix = mask.index_select(0, targets)
@@ -3675,7 +3692,8 @@ def train(**kwargs):
                                     mask_matrix = mask_matrix[:,start:]
                                 else:
                                     mask_matrix = mask_matrix[:,start:slen+tlen + 1]
-                            save_image(eval_folder, model, {"mask": mask_matrix}, spec=rm)
+                            if cross_pt:
+                                save_image(eval_folder, model, {"mask": mask_matrix}, spec=rm)
                             mylogs.bp("effect")
                             if "-" in rm  and mask is not None:
                                 if not test_key in effect_scores:

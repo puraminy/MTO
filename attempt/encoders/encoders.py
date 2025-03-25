@@ -495,7 +495,7 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
     if type(encoder_type) == list:
         encoder_type = "@".join([str(p) for p in encoder_type])
     prompt_encoder = None
-    if encoder_type.startswith("mlp"):
+    if "mlp" in encoder_type:
         if encoder_type in ["mlp", "mlp_res"]:
             _enc_type = encoder_type.split("@")
             if len(_enc_type) > 1:
@@ -506,7 +506,7 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 non_linear = _enc_type[3]
 
         # assert False, str(num_layers) + "-" + str(hidden_size) + "-" + str(non_linear)
-        if encoder_type == "mlp_res":
+        if encoder_type == "mlp_res" or encoder_type == "rmlp":
             prompt_encoder = ResidualMLPPromptEncoder(name = name,
                 model=model, tokenizer=tokenizer,
                 prompt_tokens=prompt_tokens, 
