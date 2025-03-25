@@ -320,9 +320,9 @@ class AttentivePromptEncoder(torch.nn.Module):
                 lambda_start=self.lambda_entropy,
                 warmup_steps=config.warmup_steps)
 
-        self.aneal_router_temperature_dynamic = AnnealTemperatureDynamic(
-                self.temperature,
-                anneal_min, 
+        self.aneal_router_temperature_dynamic = AnnealTemperatureDynamic(module=self,
+                temp_start=self.temperature,
+                temp_min=self.anneal_min, 
                 warmup_steps=config.warmup_steps)
 
         self.aneal_router_temperature = Anneal(self.temperature, 
@@ -672,7 +672,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         return attn_mask.long()
 
     def anneal(self, i_step):
-         if self.anneal_type = "dyn":
+         if self.anneal_type == "dyn":
              self.temperature = self.aneal_router_temperature_dynamic.anneal(i_step)
          else:
              self.temperature = self.aneal_router_temperature.anneal(i_step)
