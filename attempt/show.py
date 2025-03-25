@@ -3355,7 +3355,9 @@ def show_df(df, summary=False):
                         if row['preds'] == "All":
                             B[col] = row[col]
                         elif row['preds'].strip() == col:
-                            per = round(row[col] / B[col],2)
+                            per = None
+                            if col in B:
+                                per = round(row[col] / B[col],2)
                             if per is not None:
                                 per *= 100
                                 per = str(per) + "\%"
@@ -3379,10 +3381,14 @@ def show_df(df, summary=False):
             df = pd.concat(dfs, ignore_index=True)
             all_sel_cols = ["preds"] + list(df.columns)
             sel_cols = all_sel_cols[:20] 
-            sel_cols.remove("prefix")
-            sel_cols.remove("eid")
-            sel_cols.remove("group")
-            sel_cols.remove("All")
+            if "prefix" in sel_cols:
+                sel_cols.remove("prefix")
+            if "eid" in sel_cols:
+                sel_cols.remove("eid")
+            if "group" in sel_cols:
+                sel_cols.remove("group")
+            if "All" in sel_cols:
+                sel_cols.remove("All")
             for col in sel_cols:
                col_widths[col] = len(col) + 2
             #adjust = False
@@ -4066,7 +4072,7 @@ def show_df(df, summary=False):
             cat = ""
             if char == "e" and len(df) > 0:
                 cat = df.iloc[sel_row]["cat"] 
-                _default = cat + "\n" + df.iloc[sel_row]["comment"]
+                _default = str(cat) + "\n" + df.iloc[sel_row]["comment"]
             _comment, ret_ch = biginput("", default=_default)
             if _comment:
                 lines = _comment.split("\n")

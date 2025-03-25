@@ -854,6 +854,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    args["save_conf"] = save_conf 
    y_labels = []
    exp_number = 1
+   exp_output_dir = exp_args["output_dir"]
    for comb in tot_comb:
        _output_dir = []
        prev_name = ""
@@ -913,7 +914,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        #_output_dir.append(str(args["expid"]))
        output_dir = save_path 
        if exp_conf and not new_exp_folder:
-            output_dir = exp_args["output_dir"]
+            output_dir = exp_output_dir 
        if merge:
            ee = args["expid"]
            exp_file = args[merge]
