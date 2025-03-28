@@ -3,14 +3,24 @@ from dataclasses import dataclass
 from transformers import DataCollatorForSeq2Seq
 
 
-@dataclass
 class TaskDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
-    def check_uniqueness(self, samples):
-        assert len(np.unique(samples)) == 1
-
     def __call__(self, features):
-        # tasks = [d.pop('task') for d in features]
-        # self.check_uniqueness(tasks)
-        output = super().__call__(features)
-        # output["task"] = tasks[0]
-        return output
+        # First let the parent collator handle standard fields
+        batch = super().__call__(features)
+        
+        # Preserve additional fields (like task_ids)
+        breakpoint()
+        extra_fields = {k: [feature[k] for feature in features] 
+                       for k in features[0].keys() 
+                       if k not in ['input_ids', 'attention_mask', 'labels']}
+        
+        # Convert lists to tensors
+        for k, v in extra_fields.items():
+            if isinstance(v[0], torch.Tensor):
+                batch[k] = torch.stack(v)
+            elif isinstance(v[0], (int, float)):
+                batch[k] = torch.tensor(v)
+            else:
+                batch[k] = v  # Keep as list for non-tensor fields
+                
+        return batch

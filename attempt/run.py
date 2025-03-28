@@ -945,11 +945,10 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            #    if True: #ans == "y":
            #        continue
            if not reval:
-               b_dir = output_dir
                while Path(output_dir).exists():
                    ee += 1 
                    _output_dir = label + str(ee)
-                   output_dir = os.path.join(b_dir, _output_dir)
+                   output_dir = os.path.join(save_path, _output_dir)
            if label:
                expid = experiment.split("/")[-1] + "-" + label + "-" + str(eee)
                expid = expid.strip("-")
@@ -1728,7 +1727,7 @@ def train(**kwargs):
         config.prefix_num = model_args.prefix_num
     config.num_target = len(data_args.task_name)
     config.do_entropy_loss = kwargs.get("do_entropy_loss", False)
-    config.lambda_entropy = kwargs.get("lambda_entropy", 0.0)
+    config.lambda_entropy = kwargs.get("lambda_entropy", 0.5)
     config.warmup_steps = warmup_steps
     config.temperature = model_args.temperature
     config.learned_temperature = model_args.learned_temperature
@@ -2004,6 +2003,8 @@ def train(**kwargs):
                         length = adapter_args.num_prompt_tokens,
                         name=encoder_name)
                     if not is_loaded:
+                        if "logs" in prompts_dir:
+                            prompts_prefix = "*" #TODO should be not prompts dir
                         is_loaded = encoder.load(prompts_dir, 
                             prefix=prompts_prefix,
                             ignore_if_prompt_not_exists=ignore_if_prompt_not_exists,
@@ -2295,74 +2296,27 @@ def train(**kwargs):
             model_inputs["task_ids"] = examples["extra_fields"]["task_ids"]
 
         mylogs.bp("train_test_data")
-        model_inputs["extra_fields"] = examples.get("extra_fields", {})
+        # model_inputs["extra_fields"] = examples.get("extra_fields", {})
 
         if task_id is not None:
-            model_inputs["task_ids"] = [task_id for _ in examples.get("extra_fields", [{}])]
+            model_inputs["task_id"] = [task_id for _ in examples.get("source", [{}])]
 
         return model_inputs
 
+    def clean_dataset_item(example):
+        """Keeps only essential fields + task_id, removes other extra_fields"""
+        # These are the fields we want to keep
+        essential_fields = {
+            'input_ids': example['input_ids'],
+            'attention_mask': example['attention_mask'],
+            'labels': example['labels'],
+            'task_id': example['task_id']  # Keep this specifically
+        }
+        return essential_fields
 
 
-    def preprocess_function2(examples, max_target_length, task_type="", task_id=None):
-        mylogs.bp("data")
-        model_inputs = tokenizer(examples['source'], max_length=data_args.max_source_length,
-                                 padding=padding, truncation=True)
-        if preview == "data":
-            print("sourece: %s", examples["source"][:hit_count])
-            print("target: %s", examples["target"][:hit_count])
-
-        if bp and bp in "data|examples":
-            logger.info("sourece: %s", examples["source"][:5])
-            logger.info("target: %s", examples["target"][:5])
-            if "extra_fields" in examples:
-                logger.info("extra: %s", examples["extra_fields"][:5])
-            breakpoint()
-        # Setup the tokenizer for targets
-        mylogs.bp("encode")
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(
-                examples['target'], max_length=max_target_length, padding=padding, truncation=True)
-        #if preview == "data":
-        #    logger.info("target encoded: %s", labels)
-        # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
-        # padding in the loss.
-        if padding == "max_length" and data_args.ignore_pad_token_for_loss:
-            labels["input_ids"] = [
-                [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
-            ]
-        model_inputs["labels"] = labels["input_ids"]
-        #if preview == "data":
-        #    logger.info("target encoded input ids: %s", labels["input_ids"])
-        # Check for <extra_id_x> in the source and reconstruct full sentence
-        full_sentences = []
-        for source, target in zip(examples['source'], examples['target']):
-            if "<extra_id_" in source:
-                for i, segment in enumerate(target.split("<extra_id_")):
-                    if i > 0:  # Skip the first part before <extra_id_0>
-                        placeholder = f"<extra_id_{i-1}>"
-                        source = source.replace(placeholder, segment.split(">")[1], 1)
-                full_sentence = source
-            else:
-                full_sentence = source + " " + target
-
-            full_sentences.append(full_sentence)
-
-        # Tokenize the full sentence and add to model_inputs
-        full_tokenized = tokenizer(full_sentences, max_length=data_args.max_source_length + max_target_length,
-                                   padding=padding, truncation=True)
-        model_inputs["full_ids"] = full_tokenized["input_ids"]
-        ##################
-        if "task_ids" in examples["extra_fields"]:
-            model_inputs["task_ids"] = examples["extra_fields"]["task_ids"]
-        mylogs.bp("train_test_data")
-        model_inputs["extra_fields"] = examples['extra_fields']  
-        if task_id is not None:
-            model_inputs["task_ids"] = [
-                task_id for _ in examples['extra_fields']]
-        return model_inputs
-
-    column_names = ['source', 'target', 'extra_fields']
+    train_column_drops = ['source', 'target', 'task', 'extra_fields']
+    test_column_drops = ['source', 'target','task']
     performance_metrics = {}
     task_args = dotdict(task_args.copy())
     inex_training_samples = kwargs.get("inex_training_samples", data_args.max_train_samples)
@@ -2403,9 +2357,10 @@ def train(**kwargs):
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 # if train_dataset != "superglue-record" else column_names+["answers"],
-                remove_columns=column_names,
+                remove_columns=train_column_drops,
                 load_from_cache_file=not data_args.overwrite_cache,
             )
+
         if trainer_shuffle:
             train_dataset = concatenate_datasets(train_datasets)
         else:
@@ -2439,7 +2394,7 @@ def train(**kwargs):
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 # if name != "superglue-record" else column_names+["answers"],
-                remove_columns=column_names,
+                remove_columns=test_column_drops,
                 load_from_cache_file=not data_args.overwrite_cache,
             )
 
@@ -2469,8 +2424,8 @@ def train(**kwargs):
     print(compute_metrics_fn)
 
     data_info = {}
-    has_extra = kwargs.setdefault("has_extra", True)
-    if has_extra:
+    has_extra = kwargs.setdefault("has_extra", True) and "extra_fields" in train_dataset
+    if has_extra and False: #TODO remove data_info
         data_info["eval"] = eval_datasets[data_args.eval_dataset_name[0]]['extra_fields'] if training_args.do_eval else None
         data_info["train"] = train_dataset['extra_fields'] if training_args.do_train else None
 
@@ -2628,6 +2583,8 @@ def train(**kwargs):
     rgrad = len([p for p in wrapped_model.parameters() if p.requires_grad])
     nrgrad = len([p for p in wrapped_model.parameters() if not p.requires_grad])
     exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
+    print(train_dataset[0]) # it includes task_ids
+    training_args.remove_unused_columns = False
     if kwargs.use_optimizer: #TODO remove condition and the else part 
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
@@ -2649,7 +2606,7 @@ def train(**kwargs):
              optimizers=(optim, scheduler)
         )
     else:
-        trainer = Seq2SeqTrainer(
+        trainer = CustomTrainer(
         # trainer = Trainer(
             model=wrapped_model,
             args=training_args,
@@ -2913,11 +2870,11 @@ def train(**kwargs):
                                   max_target_length=max_target_lengths[k]),
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
+                remove_columns=test_column_drops,
                 load_from_cache_file=not data_args.overwrite_cache,
             )
 
-        if has_extra and first_ds:
+        if has_extra and first_ds and False:
             data_info["test"] = test_datasets[first_ds]['extra_fields'] if training_args.do_test else None
         logger.info("*** Test ***")
         

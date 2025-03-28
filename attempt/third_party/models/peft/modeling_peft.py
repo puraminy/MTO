@@ -11,6 +11,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.utils.checkpoint import checkpoint
 import numpy as np
+from torch.utils.data.dataset import Dataset
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 class AnnealLambda:
     def __init__(self, module, lambda_start=0.0, lambda_max=0.1, warmup_steps=5000, target_entropy=0.5, entropy_tolerance=0.1):
@@ -685,7 +687,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         loss = 0
         if self.do_entropy_loss is True:
             router_entropy_loss = entropy_loss(probs)
-            lambda_entropy = 0.1 # self.lambda_entropy # 0.1  # Weight for entropy penalty
+            lambda_entropy = self.lambda_entropy # 0.1  # Weight for entropy penalty
             loss = lambda_entropy * router_entropy_loss  # Add entropy penalty
         self.entropy_loss = loss
 
@@ -1624,8 +1626,134 @@ def entropy_loss(attention_weights):
     entropy = -torch.sum(attention_probs * torch.log(attention_probs + eps), dim=-1)  # Compute entropy per batch
     return entropy.mean()  # Return average entropy loss
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import Trainer
+
 class CustomTrainer(Trainer):
+    """
+    Custom Trainer for T5 with soft prompt tuning, contrastive loss, and router loss.
+    """
+
+    def __init__(self, model, alpha=0.1, beta=0.05, temperature=0.07, *args, **kwargs):
+        super().__init__(model, *args, **kwargs)
+        self.alpha = alpha  # Weight for contrastive loss
+        self.beta = beta    # Weight for router loss
+        self.temperature = temperature  # Scaling factor for contrastive loss
+    
+    def evaluate(
+        self,
+        eval_dataset: Optional[Dict[str, Dataset]] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+        max_length: Optional[int] = None,
+        num_beams: Optional[int] = None,
+    ) -> Dict[str, float]:
+        self._max_length = max_length
+        self._num_beams = num_beams,
+        print("=================== Evaluation ==================")
+        print("Experiment: ", mylogs.args("exp_number"), "/", mylogs.args("total_exp"))
+        print("Tags: ", mylogs.get_tag(as_str=True))
+        print("Conf: ", mylogs.args("conf"))
+        print("Model: ", mylogs.args("model_name_or_path"))
+        print("Train samples: ", mylogs.args("max_train_samples"))
+        print("Batch size: ", mylogs.args("per_device_train_batch_size"))
+        print("Tasks: ", mylogs.args("task_name"), " minus ", mylogs.args("exclude_tasks"))
+        print("Save in: ", mylogs.args("save_path"))
+        print("=================================================")
+        if eval_dataset is None and self.eval_dataset is None:
+            if self.args.do_eval:
+                raise ValueError("Trainer: evaluation requires an eval_dataset.")
+            else:
+                return None
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        metrics = super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
+        self.log_metrics("eval", metrics)
+        logger = mylogs.tlog
+        logger.info(f"***** metrics *****")
+        wandb.log(metrics)
+        metrics_formatted = self.metrics_format(metrics)
+        k_width = max(len(str(x)) for x in metrics_formatted.keys())
+        v_width = max(len(str(x)) for x in metrics_formatted.values())
+        for key in sorted(metrics_formatted.keys()):
+            logger.info(f"  {key: <{k_width}} = {metrics_formatted[key]:>{v_width}}")
+
+        return metrics
+
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        """
+        Custom loss function that combines:
+        - Cross-entropy loss for text generation
+        - Contrastive loss for soft prompts
+        - Router loss for task-specific routing
+        """
+
+        input_ids = inputs["input_ids"]
+        labels = inputs["labels"]
+
+        batch_size = input_ids.size(0)
+        target_prompt_masks = model.encoder.get_target_prompt_ids_mask(input_ids)
+        # exteract prompt ids of tasks in the batch
+        # target_prompt_ids = input_ids[target_prompt_masks].view(batch_size,-1) 
+
+        soft_prompt_indices = input_ids[target_prompt_masks].view(batch_size,-1) 
+        task_ids = inputs.get("task_id", None)  # Task-specific IDs
+
+        # Standard T5 cross-entropy loss
+        outputs = model(input_ids=input_ids, labels=labels)
+        gen_loss = outputs.loss
+
+        # Get soft prompt representations (ensure correct implementation)
+        hidden_states = model.nested_model.encoder(input_ids).last_hidden_state  
+
+        prompt_reps = hidden_states[target_prompt_masks].view(batch_size, -1, 
+                hidden_states.size(-1))
+
+        # Compute contrastive loss
+        cont_loss = self.compute_contrastive_loss(prompt_reps, task_ids) 
+
+        # Compute router loss (assuming it is implemented elsewhere)
+        router_loss = self.compute_router_loss(model, input_ids, labels)
+
+        # Combine losses
+        total_loss = gen_loss + self.alpha * cont_loss + self.beta * router_loss
+
+        return (total_loss, outputs) if return_outputs else total_loss
+
+    def compute_contrastive_loss(self, prompt_reps, task_ids):
+        """
+        Args:
+            prompt_reps: Tensor of shape [batch_size, num_prompts, hidden_dim]
+            task_ids: Tensor of shape [batch_size] containing task IDs
+        """
+        batch_size, num_prompts, hidden_dim = prompt_reps.shape
+
+        # Normalize representations
+        prompt_reps = F.normalize(prompt_reps, p=2, dim=-1)  # [bs, num_prompts, dim]
+
+        # Compute similarity between all prompts
+        flat_reps = prompt_reps.view(-1, hidden_dim)  # [bs*num_prompts, dim]
+        sim_matrix = torch.mm(flat_reps, flat_reps.t()) / self.temperature  
+
+        # Create task mask (1 where same task, 0 otherwise)
+        expanded_task_ids = task_ids.repeat_interleave(num_prompts)  # [bs*num_prompts]
+        mask = (expanded_task_ids.unsqueeze(1) == expanded_task_ids.unsqueeze(0)).float()
+
+        # Remove self-similarity
+        mask.fill_diagonal_(0)
+
+        # NT-Xent loss calculation
+        exp_sim = torch.exp(sim_matrix)
+        pos_sim = exp_sim * mask
+        neg_sim = exp_sim * (1 - mask)
+
+        contrastive_loss = -torch.log(
+            pos_sim.sum(dim=-1) / (pos_sim.sum(dim=-1) + neg_sim.sum(dim=-1) + 1e-9)
+        )
+        return contrastive_loss.mean()
+
+    def compute_router_loss(self, model, input_ids, labels):
         """
         Compute the model loss with entropy regularization on router logits.
 
@@ -1637,14 +1765,9 @@ class CustomTrainer(Trainer):
         Returns:
             Loss value (with entropy regularization).
         """
-        outputs = model(**inputs)
-        loss = outputs.loss  # Standard task loss (e.g., cross-entropy)
-        if model.encoder.do_entropy_loss is True:
-            loss = loss + model.encoder.entropy_loss  # Add entropy penalty
-        
-        return (loss, outputs) if return_outputs else loss
-
-
+        if model.encoder.do_entropy_loss:
+            return model.encoder.entropy_loss  # Add entropy penalty
+        return 0
 
     def prediction_step(self, model, inputs, prediction_loss_only=False, ignore_keys=None):
         """
@@ -1656,6 +1779,7 @@ class CustomTrainer(Trainer):
         # Extract input IDs and attention mask
         input_ids = inputs.get("input_ids")
         attention_mask = inputs.get("attention_mask")
+        task_id = inputs.get("task_id")
 
         # Generate predictions using the `.generate()` method
         generated_tokens = model.generate(
@@ -1663,6 +1787,7 @@ class CustomTrainer(Trainer):
             attention_mask=attention_mask,
             max_length=10,  # Adjust as needed
             num_beams=1,    # Adjust as needed
+            # logits_processor=[TaskAwareLogitsProcessor(task_id, tokenizer)]
         )
 
         # Prepare labels (if available)
@@ -1676,6 +1801,19 @@ class CustomTrainer(Trainer):
                 loss = outputs.loss
 
         return (loss, generated_tokens, labels)
+
+from transformers import LogitsProcessor
+
+class TaskAwareLogitsProcessor(LogitsProcessor):
+    def __init__(self, task_id, tokenizer):
+        self.allowed_tokens = tokenizer.convert_tokens_to_ids(
+            TASK_LABELS[task_id]
+        )
+        
+    def __call__(self, input_ids, scores):
+        mask = torch.ones_like(scores) * -float("inf")
+        mask[:, self.allowed_tokens] = 0
+        return scores + mask
 
 
 class CustomModelWrapper(PreTrainedModel):
