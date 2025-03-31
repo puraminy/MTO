@@ -241,7 +241,7 @@ from transformers import (
 )
 
 def get_data_collator(task_type, tokenizer, data_args, 
-        training_args, label_pad_token_id=-100, cls_labels=False):
+        training_args, label_pad_token_id=-100, is_classifier=False):
     """
     Returns the appropriate data collator based on the task type.
 
@@ -258,7 +258,7 @@ def get_data_collator(task_type, tokenizer, data_args,
     if data_args.pad_to_max_length:
         return default_data_collator
     else:
-        if task_type == "SEQ_2_SEQ_LM" and not cls_labels:
+        if task_type == "SEQ_2_SEQ_LM" and not is_classifier:
             return DataCollatorForSeq2Seq(
                 tokenizer,
                 label_pad_token_id=label_pad_token_id,
@@ -270,7 +270,7 @@ def get_data_collator(task_type, tokenizer, data_args,
                 mlm=False,  # Set to True if you're using masked language modeling
                 pad_to_multiple_of=8 if training_args.fp16 else None,
             )
-        if task_type == "SEQ_CLS" or cls_labels:
+        if task_type == "SEQ_CLS" or is_classifier:
             return DataCollatorWithPadding(
                 tokenizer,
                 pad_to_multiple_of=8 if training_args.fp16 else None,
@@ -1754,13 +1754,15 @@ def train(**kwargs):
     
     wrapped_model = model
     peft_method = kwargs.get("peft_method", False)
+    is_classifier = kwargs.setdefault("is_classifier", False)
     if peft_method:
+        breakpoint()
         peft_config = get_peft_config(peft_method, task_type, model_name_or_path, kwargs)
         model.enable_input_require_grads()
         #wrapped_model = get_peft_model(model, peft_config)
         wrapped_model = PTModel(model, peft_config, attn_pt)
     elif attn_pt is not None:
-        wrapped_model = CustomModelWrapper(model, base_config, attn_pt)
+        wrapped_model = CustomModelWrapper(model, base_config, attn_pt, cls=is_classifier)
 
     #model = T5ForConditionalGeneration.from_pretrained(
     #    model_name_or_path,
@@ -2233,11 +2235,11 @@ def train(**kwargs):
             print("target:", examples.get("target", [])[:hit_count])
 
         # Sequence-to-Sequence Processing
-        cls_labels = kwargs.setdefault("cls_labels", False)
+        is_classifier = kwargs.setdefault("is_classifier", False)
         cleaned_targets = examples["target"]
         if task_type != "SEQ_2_SEQ_LM" or not "t5" in model_name_or_path:
             cleaned_targets = [clean_target_label(target) for target in examples["target"]]
-        if task_type == "SEQ_2_SEQ_LM" and not cls_labels:
+        if task_type == "SEQ_2_SEQ_LM" and not is_classifier:
             mylogs.bp("encode")
             with tokenizer.as_target_tokenizer():
                 labels = tokenizer(
@@ -2272,7 +2274,7 @@ def train(**kwargs):
             model_inputs["labels"] = labels["input_ids"]
 
         # Sequence Classification
-        if task_type == "SEQ_CLS" or cls_labels:
+        if task_type == "SEQ_CLS" or is_classifier:
             # Get unique labels and assign unique IDs
             unique_labels = list(set(cleaned_targets))  # Get distinct labels
             label_to_id = {label: idx for idx, label in enumerate(unique_labels)} 
@@ -2405,7 +2407,7 @@ def train(**kwargs):
         print("preview is template")
         return
     # Data collator
-    cls_labels = kwargs.setdefault("cls_labels", False)
+    is_classifier = kwargs.setdefault("is_classifier", False)
     label_pad_token_id = - \
         100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
     if data_args.pad_to_max_length:
@@ -2417,7 +2419,7 @@ def train(**kwargs):
             data_args=data_args,
             training_args = training_args,
             label_pad_token_id=label_pad_token_id,
-            cls_labels = cls_labels
+            is_classifier = is_classifier
         )
     eval_metrics = [AutoTask.get(dataset_name, 
                     dataset_config_name, task_args=task_args, tokenizer=tokenizer).metric
@@ -2595,6 +2597,7 @@ def train(**kwargs):
         # trainer = Seq2SeqTrainer(
         trainer = CustomTrainer(
             model=wrapped_model,
+            cls = is_classifier,
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset= eval_ds,
@@ -3168,7 +3171,7 @@ def train(**kwargs):
                 mylogs.bp("decode")
                 labels_list = extra["labels_list"]
                 pid = predicted_token_ids[i] 
-                if task_type == "SEQ_2_SEQ_LM" and not cls_labels:
+                if task_type == "SEQ_2_SEQ_LM" and not is_classifier:
                     pred = tokenizer.decode(pid,
                             skip_special_tokens=skip_specials) 
                 else:
