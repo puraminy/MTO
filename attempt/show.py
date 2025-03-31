@@ -2368,7 +2368,7 @@ def show_df(df, summary=False):
                     df = df.groupby(col)["All"].agg(['mean', 'std']).reset_index()
                     df.columns = ['_'.join(col).strip() 
                         if isinstance(col, tuple) else col for col in df.columns]
-                    df = df.sort_values(by=["All"], ascending=False)
+                    df = df.sort_values(by=["mean"], ascending=False)
                 df = df.round(2)
                 sel_cols = list(df.columns)
                 left = 0

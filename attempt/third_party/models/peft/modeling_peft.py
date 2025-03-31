@@ -1625,7 +1625,7 @@ def entropy_loss(attention_weights):
     return entropy.mean()  # Return average entropy loss
 
 class CustomTrainer(Trainer):
-    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+    def compute_loss_2(self, model, inputs, return_outputs=False, **kwargs):
         """
         Compute the model loss with entropy regularization on router logits.
 
@@ -1677,8 +1677,62 @@ class CustomTrainer(Trainer):
 
         return (loss, generated_tokens, labels)
 
+import torch
+import torch.nn as nn
+from transformers import PreTrainedModel
 
 class CustomModelWrapper(PreTrainedModel):
+    def __init__(self, nested_model, base_config, attn_pt=None, num_labels=2):
+        super().__init__(base_config)
+        self.nested_model = nested_model
+        self.encoder = attn_pt  # Optional prompt tuning module
+        self.classifier = nn.Linear(base_config.d_model, num_labels)  # Classification head
+
+    def forward(self, input_ids: Optional[torch.Tensor] = None, 
+                inputs_embeds: Optional[torch.Tensor] = None, 
+                attention_mask: Optional[torch.Tensor] = None, 
+                labels: Optional[torch.Tensor] = None,
+                **kwargs) -> Dict[str, Any]:
+        
+        # Get the embedding layer from the base model
+        embedding_layer = self.nested_model.get_input_embeddings()
+
+        # Convert input_ids to embeddings if necessary
+        if input_ids is not None:
+            inputs_embeds = embedding_layer(input_ids)
+
+        # Apply prompt tuning if enabled
+        if self.encoder is not None:
+            input_ids, attention_mask, inputs_embeds = \
+                self.encoder.prompt_encoders_forward(
+                    input_ids, inputs_embeds, att_mask=attention_mask
+                )
+
+        # Pass the inputs through the T5 encoder
+        encoder_outputs = self.nested_model.encoder(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            return_dict=True
+        )
+
+        # Take the last hidden state (first token or pooled representation)
+        pooled_output = encoder_outputs.last_hidden_state[:, 0, :]  # CLS token representation
+
+        # Apply classifier
+        logits = self.classifier(pooled_output)
+
+        outputs = {"logits": logits}
+
+        # Compute loss if labels are provided
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits, labels)
+            outputs["loss"] = loss
+
+        return outputs
+
+
+class CustomModelWrapper2(PreTrainedModel):
     def __init__(self, nested_model, base_config, attn_pt=None):
         super().__init__(base_config)
         self.nested_model = nested_model
