@@ -74,6 +74,7 @@ class AnnealCallback(TrainerCallback):
         logs["threshold:"] = '{:3}'.format('{}'.format(e.sel_thresh)) 
         logs["lambda_entropy"] = '{:.6f}'.format(e.lambda_entropy)
         logs["entropy_loss"] = '{:.6f}'.format(e.entropy_loss)
+        logs["cont_loss"] = '{:.6f}'.format(e.cont_loss)
 
     def on_step_begin(self, args, state, control, **kwargs):
         e = self.module 

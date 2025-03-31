@@ -240,7 +240,8 @@ from transformers import (
     default_data_collator,
 )
 
-def get_data_collator(task_type, tokenizer, data_args, training_args, label_pad_token_id=-100):
+def get_data_collator(task_type, tokenizer, data_args, 
+        training_args, label_pad_token_id=-100, cls_labels=False):
     """
     Returns the appropriate data collator based on the task type.
 
@@ -257,24 +258,24 @@ def get_data_collator(task_type, tokenizer, data_args, training_args, label_pad_
     if data_args.pad_to_max_length:
         return default_data_collator
     else:
-        if task_type == "SEQ_2_SEQ_LM":
+        if task_type == "SEQ_2_SEQ_LM" and not cls_labels:
             return DataCollatorForSeq2Seq(
                 tokenizer,
                 label_pad_token_id=label_pad_token_id,
                 pad_to_multiple_of=8 if training_args.fp16 else None,
             )
-        elif task_type == "CAUSAL_LM":
+        if task_type == "CAUSAL_LM":
             return DataCollatorForLanguageModeling(
                 tokenizer,
                 mlm=False,  # Set to True if you're using masked language modeling
                 pad_to_multiple_of=8 if training_args.fp16 else None,
             )
-        elif task_type == "SEQ_CLS":
+        if task_type == "SEQ_CLS" or cls_labels:
             return DataCollatorWithPadding(
                 tokenizer,
                 pad_to_multiple_of=8 if training_args.fp16 else None,
             )
-        elif task_type == "TOKEN_CLS":
+        if task_type == "TOKEN_CLS":
             return DataCollatorForTokenClassification(
                 tokenizer,
                 pad_to_multiple_of=8 if training_args.fp16 else None,
@@ -1727,6 +1728,7 @@ def train(**kwargs):
         config.prefix_num = model_args.prefix_num
     config.num_target = len(data_args.task_name)
     config.do_entropy_loss = kwargs.get("do_entropy_loss", False)
+    config.do_cont_loss = kwargs.get("do_cont_loss", False)
     config.lambda_entropy = kwargs.get("lambda_entropy", 0.5)
     config.warmup_steps = warmup_steps
     config.temperature = model_args.temperature
@@ -2231,10 +2233,11 @@ def train(**kwargs):
             print("target:", examples.get("target", [])[:hit_count])
 
         # Sequence-to-Sequence Processing
+        cls_labels = kwargs.setdefault("cls_labels", False)
         cleaned_targets = examples["target"]
         if task_type != "SEQ_2_SEQ_LM" or not "t5" in model_name_or_path:
             cleaned_targets = [clean_target_label(target) for target in examples["target"]]
-        if task_type == "SEQ_2_SEQ_LM":
+        if task_type == "SEQ_2_SEQ_LM" and not cls_labels:
             mylogs.bp("encode")
             with tokenizer.as_target_tokenizer():
                 labels = tokenizer(
@@ -2252,7 +2255,7 @@ def train(**kwargs):
             model_inputs["labels"] = labels["input_ids"]
 
         # Causal LM (Decoder-only models like GPT)
-        elif task_type == "CAUSAL_LM":
+        if task_type == "CAUSAL_LM":
             mylogs.bp("encode")
             with tokenizer.as_target_tokenizer():
                 labels = tokenizer(
@@ -2269,7 +2272,7 @@ def train(**kwargs):
             model_inputs["labels"] = labels["input_ids"]
 
         # Sequence Classification
-        elif task_type == "SEQ_CLS":
+        if task_type == "SEQ_CLS" or cls_labels:
             # Get unique labels and assign unique IDs
             unique_labels = list(set(cleaned_targets))  # Get distinct labels
             label_to_id = {label: idx for idx, label in enumerate(unique_labels)} 
@@ -2279,11 +2282,11 @@ def train(**kwargs):
             model_inputs["labels"] = labels 
 
         # Token Classification (NER, POS tagging)
-        elif task_type == "TOKEN_CLS":
+        if task_type == "TOKEN_CLS":
             model_inputs["labels"] = cleaned_targets
 
         # Question Answering (Start/End positions)
-        elif task_type == "QUESTION_ANS":
+        if task_type == "QUESTION_ANS":
             model_inputs["start_positions"] = examples["start_positions"]
             model_inputs["end_positions"] = examples["end_positions"]
 
@@ -2315,8 +2318,8 @@ def train(**kwargs):
         return essential_fields
 
 
-    train_column_drops = ['source', 'target', 'task', 'extra_fields']
-    test_column_drops = ['source', 'target','task']
+    train_column_drops = ['source', 'target',  'extra_fields']
+    test_column_drops = ['source', 'target']
     performance_metrics = {}
     task_args = dotdict(task_args.copy())
     inex_training_samples = kwargs.get("inex_training_samples", data_args.max_train_samples)
@@ -2390,7 +2393,7 @@ def train(**kwargs):
             eval_datasets[name] = eval_datasets[name].map(
                 functools.partial(preprocess_function,
                                   task_type = task_type,
-                                  max_target_length=max_target_lengths[k]),
+                                  max_target_length=max_target_lengths[k], task_id = k),
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 # if name != "superglue-record" else column_names+["answers"],
@@ -2402,6 +2405,7 @@ def train(**kwargs):
         print("preview is template")
         return
     # Data collator
+    cls_labels = kwargs.setdefault("cls_labels", False)
     label_pad_token_id = - \
         100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
     if data_args.pad_to_max_length:
@@ -2412,7 +2416,8 @@ def train(**kwargs):
             tokenizer,
             data_args=data_args,
             training_args = training_args,
-            label_pad_token_id=label_pad_token_id
+            label_pad_token_id=label_pad_token_id,
+            cls_labels = cls_labels
         )
     eval_metrics = [AutoTask.get(dataset_name, 
                     dataset_config_name, task_args=task_args, tokenizer=tokenizer).metric
@@ -2867,7 +2872,7 @@ def train(**kwargs):
             test_datasets[name] = test_datasets[name].map(
                 functools.partial(preprocess_function,
                                   task_type = task_type,
-                                  max_target_length=max_target_lengths[k]),
+                                  max_target_length=max_target_lengths[k], task_id = k),
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 remove_columns=test_column_drops,
@@ -3081,11 +3086,19 @@ def train(**kwargs):
                  #   task=task
                 )
             predicted_token_ids = predictions
+            if task_type == "SEQ_CLS" and False:
+                # Convert logits to token IDs
+                predicted_token_ids = np.argmax(predicted_token_ids, axis=-1)
+                # predicted_labels = [model.config.id2label[pred] for pred in predicted_token_ids]
+                # predicted_indices = np.argmax(predicted_token_ids, axis=1) 
+                # predicted_labels = [label_list[idx] for idx in predicted_indices] 
+
             if False: #predictions.size() > 2:
                 if peft_method:
                     predicted_token_ids = predictions[1].argmax(axis=-1)
                 else:
                     predicted_token_ids = predictions[0].argmax(axis=-1)
+
             predicted_token_ids = np.clip(predicted_token_ids, 0, tokenizer.vocab_size - 1)
 
             if (method == "pt" or cross_pt) and gen_conf["mask_type"].startswith("no-mask"):
@@ -3153,8 +3166,13 @@ def train(**kwargs):
                 df.at[i, "query"] = extra["query"]  
                 df.at[i, "resp"] =  extra["resp"]  
                 mylogs.bp("decode")
-                pred = tokenizer.decode(predicted_token_ids[i], 
-                        skip_special_tokens=skip_specials) 
+                labels_list = extra["labels_list"]
+                pid = predicted_token_ids[i] 
+                if task_type == "SEQ_2_SEQ_LM" and not cls_labels:
+                    pred = tokenizer.decode(pid,
+                            skip_special_tokens=skip_specials) 
+                else:
+                    pred = labels_list[pid] 
                 if skip_specials:
                     pred = re.sub(r'<.*?>','',pred)
                 else:

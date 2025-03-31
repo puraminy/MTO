@@ -1089,6 +1089,7 @@ class AbstractTask(abc.ABC):
         ex_fields = {}
         ex_fields["event"] = orig_src
         ex_fields["tail"] = tgt
+        ex_fields["labels_list"] = labels_list
         ex_fields["sel"] = False
         ex_fields["split"] = self.split
         src_text, tgt_text, ex_fields = self.fill_template(data, ex_fields)
