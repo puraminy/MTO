@@ -3307,77 +3307,79 @@ def show_df(df, summary=False):
         if cmd.startswith("cross") or char == "t":
             backit(df, sel_cols)
             eid = df.iloc[sel_row]['eid'] 
-            if "prefix" in df:
-                _, scores = get_sel_rows(df, None, col="rouge_score", from_main=False) 
-                _, prefixes = get_sel_rows(df, None, col="prefix", from_main=False) 
-                exprs = [eid] * len(prefixes)
-                if "mask_type" in df:
-                    _, mask_types = get_sel_rows(df, None, col="mask_type", from_main=False) 
-                if "label" in df:
-                   _, labels = get_sel_rows(df, None, col="label", from_main=False) 
-                else:
-                    labels = ["x"] * len(exprs)
-            else:
-                prefix = sel_cols[cur_col]
-                exprs, scores = get_sel_rows(df, col=prefix, from_main=False) 
-                prefixes = [prefix]*len(exprs)
-                if "mask_type" in df:
-                    _, mask_types = get_sel_rows(df, col="mask_type", from_main=False) 
-                else:
-                    mask_types = exprs.copy()
-                if "label" in df:
-                    _, labels = get_sel_rows(df, col="label", from_main=False) 
-                else:
-                    labels = exprs.copy()
-
-            _cols = ["pred_text1", "target_text"]
             dfs = []
-            for eid, acc, mt, label, prefix in zip(exprs, scores, mask_types, labels, prefixes):
-                tdf = main_df.loc[(main_df.eid == eid) & (main_df.prefix == prefix), _cols]
-                canceled, val = False, "pred_text1" # list_values(sel_cols)
-                if not canceled:
-                    treatment = 'target_text' #sel_cols[cur_col]
-                    tdf = pd.crosstab(tdf[val], tdf[treatment], margins=True)
-                tdf["preds"] = list(tdf.axes[0])
-                count_columns = tdf.columns[tdf.columns != 'preds']
-                tdf['first_word'] = tdf['preds'].str.split().str[0]
-                tdf['group'] = tdf['first_word'].str[:5]
-                gdf = tdf.groupby('group').agg({
-                    'preds': lambda x: x.head(1),  # Preserve the first 'text' value in each group
-                    **{col: 'sum' for col in count_columns}  # Sum up the count columns
-                }).reset_index()
+            for prefix in pcols:
+                if "prefix" in df:
+                    _, scores = get_sel_rows(df, None, col="rouge_score", from_main=False) 
+                    _, prefixes = get_sel_rows(df, None, col="prefix", from_main=False) 
+                    exprs = [eid] * len(prefixes)
+                    if "mask_type" in df:
+                        _, mask_types = get_sel_rows(df, None, col="mask_type", from_main=False) 
+                    if "label" in df:
+                       _, labels = get_sel_rows(df, None, col="label", from_main=False) 
+                    else:
+                        labels = ["x"] * len(exprs)
+                else:
+                    # prefix = sel_cols[_cur_col]
+                    exprs, scores = get_sel_rows(df, col=prefix, from_main=False) 
+                    prefixes = [prefix]*len(exprs)
+                    if "mask_type" in df:
+                        _, mask_types = get_sel_rows(df, col="mask_type", from_main=False) 
+                    else:
+                        mask_types = exprs.copy()
+                    if "label" in df:
+                        _, labels = get_sel_rows(df, col="label", from_main=False) 
+                    else:
+                        labels = exprs.copy()
 
-                pr = {}
-                B = {}
-                for col in count_columns:
-                    gdf[col] = gdf[col].astype(int)
-                    for idx, row in gdf.iterrows():
-                        if row['preds'] == "All":
-                            B[col] = row[col]
-                        elif row['preds'].strip() == col:
-                            per = None
-                            if col in B:
-                                per = round(row[col] / B[col],2)
-                            if per is not None:
-                                per *= 100
-                                per = str(per) + "\%"
-                            pr[col] = per
+                _cols = ["pred_text1", "target_text"]
+                for eid, acc, mt, label, prefix in zip(exprs, scores, mask_types, labels, prefixes):
+                    tdf = main_df.loc[(main_df.eid == eid) & (main_df.prefix == prefix), _cols]
+                    canceled, val = False, "pred_text1" # list_values(sel_cols)
+                    if not canceled:
+                        treatment = 'target_text' #sel_cols[cur_col]
+                        tdf = pd.crosstab(tdf[val], tdf[treatment], margins=True)
+                    tdf["preds"] = list(tdf.axes[0])
+                    count_columns = tdf.columns[tdf.columns != 'preds']
+                    tdf['first_word'] = tdf['preds'].str.split().str[0]
+                    tdf['group'] = tdf['first_word'].str[:5]
+                    gdf = tdf.groupby('group').agg({
+                        'preds': lambda x: x.head(1),  # Preserve the first 'text' value in each group
+                        **{col: 'sum' for col in count_columns}  # Sum up the count columns
+                    }).reset_index()
 
-                pr["preds"] = "precision"
-                gdf.loc[len(gdf)] = pr
-                gdf = gdf.drop(index=0)
+                    pr = {}
+                    B = {}
+                    for col in count_columns:
+                        gdf[col] = gdf[col].astype(int)
+                        for idx, row in gdf.iterrows():
+                            if row['preds'] == "All":
+                                B[col] = row[col]
+                            elif row['preds'].strip().lower() == col.lower():
+                                per = None
+                                if col in B:
+                                    per = round(row[col] / B[col],2)
+                                if per is not None:
+                                    per *= 100
+                                    per = str(per) + "\%"
+                                pr[col] = per
 
-                gdf["label"] = mt
-                gdf["acc"] = acc
+                    # pr["preds"] = "precision"
+                    # gdf.loc[len(gdf)] = pr
+                    # gdf = gdf.drop(index=0)
+                    gdf = gdf[gdf['preds'] != "All"]
 
-                #precision_recall_df = gdf.apply(calculate_precision_recall, axis=1)
-                #gdf = pd.concat([gdf, precision_recall_df], axis=1)
+                    gdf["label"] =  mt + "--" + prefix
+                    gdf["acc"] = acc
 
-                gdf["prefix"] = prefix 
-                gdf["eid"] = eid
-                #tdf["exp"] = label 
-                #tdf["uid"] = str(mt) + " " + str(label) + " " + str(eid)
-                dfs.append(gdf)
+                    #precision_recall_df = gdf.apply(calculate_precision_recall, axis=1)
+                    #gdf = pd.concat([gdf, precision_recall_df], axis=1)
+
+                    gdf["prefix"] = prefix 
+                    gdf["eid"] = eid
+                    #tdf["exp"] = label 
+                    #tdf["uid"] = str(mt) + " " + str(label) + " " + str(eid)
+                    dfs.append(gdf)
             df = pd.concat(dfs, ignore_index=True)
             all_sel_cols = ["preds"] + list(df.columns)
             sel_cols = all_sel_cols[:20] 
@@ -4142,9 +4144,10 @@ def show_df(df, summary=False):
                 df = pdf.sort_values(by="All", ascending=False)
             #sort = "time"
             sel_cols = list(dict.fromkeys(sel_cols + _sel_cols))
+            scols = [col for col in df.columns if "score" in col] + ["All"]
             if len(df) > 1:
                 sel_cols, info_cols_back, tag_cols = remove_uniques(df, sel_cols, 
-                        keep_cols=pivot_cols + info_cols + pcols)
+                        keep_cols=pivot_cols + info_cols + pcols + scols)
             for col in ["folder", "output_dir", "eid", "expname"]:
                 if col in sel_cols:
                     sel_cols.remove(col)
@@ -4904,7 +4907,7 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id):
             dfname = Path(dfname).stem
         else:
             files = []
-            ii = 0
+            matched_files = []
             for root, dirs, _files in os.walk(dfpath):
                 for _file in _files:
                     root_file = os.path.join(root,_file)
@@ -4915,11 +4918,12 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id):
                         last_hour = datetime.now() - timedelta(hours = 5)
                         cond = cond and ctime > last_hour
                     if dftype in _file and cond: 
-                        files.append(root_file)
-                        ii += 1
-                if limit > 0 and ii > limit:
-                    break
-        # mlog.info("files: %s",files)
+                        matched_files.append((os.path.getctime(root_file), root_file))
+        matched_files.sort(reverse=True)
+        if limit > 0:
+            matched_files = matched_files[:limit]
+
+        files.extend(path for _, path in matched_files)
         if not files:
             print("No file was selected")
             return
@@ -5060,7 +5064,7 @@ def start(stdscr):
     help=""
 )
 @click.option(
-    "--chk_time",
+    "--no_chk_time",
     "-t",
     is_flag=True,
     help=""
@@ -5095,12 +5099,12 @@ def start(stdscr):
 @click.option(
     "--limit",
     "-l",
-    default=-1,
+    default=150,
     type=int,
     help="Limit of datasets to load"
 )
 @click.pass_context
-def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, chk_time):
+def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, no_chk_time):
     if dpy:
         port = 1234
         debugpy.listen(('0.0.0.0', int(port)))
@@ -5110,7 +5114,7 @@ def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, c
     if summary:
         hkey = hkey.replace("C","").replace("G","")
     global_summary = summary
-    check_time = chk_time
+    check_time = not no_chk_time
     global_search = search
     root_path = path
     hotkey = hkey 

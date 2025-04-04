@@ -1,4 +1,6 @@
 {
+  "#2glue":"cola#qnli#rte#qqp#mrpc#sst2",
+  "@2glue":"cola@qnli@rte@qqp@mrpc@sst2",
   "#glue":"cola#mnli#qnli#rte#stsb#qqp#mrpc#sst2",
   "@glue":"cola@mnli@qnli@rte@stsb@qqp@mrpc@sst2",
   "@mglue":"mnli@qnli@qqp@stsb@sst2",
@@ -20,6 +22,7 @@
   "start":"start_row",
   "gmax":"gen_thresh_max",
   "nm":"norm_method",
+  "cls":"cls_labels",
   "gnm":"gen_norm_method",
   "model":"model_name_or_path",
   "st":"sel_thresh",
@@ -43,6 +46,7 @@
   "addp":"add_prefix",
   "lamb":"lambda_entropy",
   "ent":"do_entropy_loss",
+  "cont":"do_cont_loss",
   "cmm":"compose_method",
   "cmt":"compose_target",
   "gcmm":"gen_compose_method",

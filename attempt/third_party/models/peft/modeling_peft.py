@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
+from transformers import T5ForConditionalGeneration, PreTrainedModel
 from datasets import load_dataset
 from peft import PromptTuningConfig, get_peft_model, PeftModel
 import attempt.mylogs as mylogs
@@ -11,6 +12,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.utils.checkpoint import checkpoint
 import numpy as np
+from torch.utils.data.dataset import Dataset
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 class AnnealLambda:
     def __init__(self, module, lambda_start=0.0, lambda_max=0.1, warmup_steps=5000, target_entropy=0.5, entropy_tolerance=0.1):
@@ -315,7 +318,9 @@ class AttentivePromptEncoder(torch.nn.Module):
 
         self.lambda_entropy = config.lambda_entropy
         self.entropy_loss = 0
+        self.cont_loss = 0
         self.do_entropy_loss = config.do_entropy_loss
+        self.do_cont_loss = config.do_cont_loss
         self.anneal_router_entropy = AnnealLambda(module=self, 
                 lambda_start=self.lambda_entropy,
                 warmup_steps=config.warmup_steps)
@@ -685,7 +690,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         loss = 0
         if self.do_entropy_loss is True:
             router_entropy_loss = entropy_loss(probs)
-            lambda_entropy = 0.1 # self.lambda_entropy # 0.1  # Weight for entropy penalty
+            lambda_entropy = self.lambda_entropy # 0.1  # Weight for entropy penalty
             loss = lambda_entropy * router_entropy_loss  # Add entropy penalty
         self.entropy_loss = loss
 
@@ -1624,8 +1629,159 @@ def entropy_loss(attention_weights):
     entropy = -torch.sum(attention_probs * torch.log(attention_probs + eps), dim=-1)  # Compute entropy per batch
     return entropy.mean()  # Return average entropy loss
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import Trainer
+
 class CustomTrainer(Trainer):
+<<<<<<< HEAD
     def compute_loss_2(self, model, inputs, return_outputs=False, **kwargs):
+=======
+    """
+    Custom Trainer for T5 with soft prompt tuning, contrastive loss, and router loss.
+    """
+
+    def __init__(self, model, alpha=0.9, beta=0.05, temperature=0.07, cls=False, *args, **kwargs):
+        super().__init__(model, *args, **kwargs)
+        self.alpha = alpha  # Weight for contrastive loss
+        self.beta = beta    # Weight for router loss
+        self.temperature = temperature  # Scaling factor for contrastive loss
+        self.task_labels = []
+        self.is_classifier = cls
+    
+    def _remove_unused_columns(self, dataset, description=None):
+        # if description != 'training':
+        #    return dataset
+        keep_columns = {'input_ids', 'attention_mask', 'labels', 'task_id'}
+        
+        dataset = dataset.remove_columns([col for col in dataset.column_names if col not in keep_columns])
+        
+        return dataset
+
+    def predict(
+        self,
+        test_dataset,
+        task_names: Optional[List[str]] = None,
+        task_labels: Optional[List[Union[int, float]]] = None,
+        **kwargs
+    ):
+        """Override predict() to accept task information while maintaining original behavior"""
+
+        # Store task info in dataset object (temporary, doesn't modify original dataset)
+        if task_names is not None:
+            test_dataset.task_names = task_names
+        if task_labels is not None:
+            test_dataset.task_labels = task_labels
+        self.task_labels = test_dataset[0]["extra_fields"]["labels_list"]
+
+        # Call original predict() with all its normal functionality
+        return super().predict(test_dataset, **kwargs)
+
+    def compute_loss_2(self, model, inputs, return_outputs=False, **kwargs):
+        """
+        Unified loss computation that handles:
+        - Encoder-decoder (T5/BART) - gets encoder hidden states
+        - Decoder-only (GPT) - gets final hidden states
+        - Encoder-only (BERT) - extracts embeddings directly when needed
+        With support for:
+        - Prompt-based contrastive loss
+        - Router loss
+        """
+        # Input preparation
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs.get("attention_mask", None)
+        labels = inputs.get("labels", None)
+        task_ids = inputs.get("task_id", None)
+        batch_size = input_ids.size(0)
+
+        # Initialize losses
+        gen_loss = cont_loss = router_loss = 0.0
+        prompt_embeddings = None
+
+        # Base forward pass
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            output_hidden_states=True  # Request hidden states for all models
+        )
+        gen_loss = outputs.loss
+
+        prompt_masks = model.encoder.get_target_prompt_ids_mask(input_ids)
+
+        if prompt_masks is not None:
+            # Handle different model architectures
+            if hasattr(model.nested_model, 'encoder'):  # Encoder-decoder models
+                embeddings = outputs.encoder_hidden_states[-1]
+            elif hasattr(outputs, 'hidden_states') and outputs.hidden_states:  # Most models
+                embeddings = outputs.hidden_states[-1]
+            else:  # Fallback for BERT-style classifiers
+                # Access the embedding layer directly
+                embeddings = model.nested_model.get_input_embeddings()(input_ids)
+                # Add positional embeddings if they exist
+                if hasattr(model.nested_model, 'embeddings') and hasattr(model.nested_model.embeddings, 'position_embeddings'):
+                    position_ids = torch.arange(input_ids.size(1), dtype=torch.long, device=input_ids.device)
+                    position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
+                    embeddings += model.nested_model.embeddings.position_embeddings(position_ids)
+
+            # Extract only the prompt token embeddings
+            prompt_embeddings = embeddings[prompt_masks].reshape(
+                batch_size, -1, embeddings.size(-1))
+
+        # Compute contrastive loss if we have prompt embeddings
+        if prompt_embeddings is not None:
+            cont_loss = self.compute_contrastive_loss(model, prompt_embeddings, task_ids)
+
+        router_loss = self.compute_router_loss(model, input_ids, labels)
+
+        # Combine losses
+        total_loss = gen_loss + self.alpha * cont_loss + self.beta * router_loss
+
+        return (total_loss, outputs) if return_outputs else total_loss
+
+
+    def compute_contrastive_loss(self, model, prompt_reps, task_ids):
+        """
+        Args:
+            prompt_reps: Tensor of shape [batch_size, num_prompts, hidden_dim]
+            task_ids: Tensor of shape [batch_size] containing task IDs
+        """
+        if not model.encoder.do_cont_loss:
+            cont_loss = 0
+            model.encoder.cont_loss = cont_loss
+            return cont_loss
+
+        batch_size, num_prompts, hidden_dim = prompt_reps.shape
+
+        # Normalize representations
+        prompt_reps = F.normalize(prompt_reps, p=2, dim=-1)  # [bs, num_prompts, dim]
+
+        # Compute similarity between all prompts
+        flat_reps = prompt_reps.view(-1, hidden_dim)  # [bs*num_prompts, dim]
+        sim_matrix = torch.mm(flat_reps, flat_reps.t()) / self.temperature  
+
+        # Create task mask (1 where same task, 0 otherwise)
+        expanded_task_ids = task_ids.repeat_interleave(num_prompts)  # [bs*num_prompts]
+        mask = (expanded_task_ids.unsqueeze(1) == expanded_task_ids.unsqueeze(0)).float()
+
+        # Remove self-similarity
+        mask.fill_diagonal_(0)
+
+        # NT-Xent loss calculation
+        exp_sim = torch.exp(sim_matrix)
+        pos_sim = exp_sim * mask
+        neg_sim = exp_sim * (1 - mask)
+
+        contrastive_loss = -torch.log(
+            pos_sim.sum(dim=-1) / (pos_sim.sum(dim=-1) + neg_sim.sum(dim=-1) + 1e-9)
+        )
+        cont_loss = contrastive_loss.mean()
+        model.encoder.cont_loss = cont_loss
+
+        return cont_loss
+
+    def compute_router_loss(self, model, input_ids, labels):
         """
         Compute the model loss with entropy regularization on router logits.
 
@@ -1637,51 +1793,142 @@ class CustomTrainer(Trainer):
         Returns:
             Loss value (with entropy regularization).
         """
-        outputs = model(**inputs)
-        loss = outputs.loss  # Standard task loss (e.g., cross-entropy)
-        if model.encoder.do_entropy_loss is True:
-            loss = loss + model.encoder.entropy_loss  # Add entropy penalty
-        
-        return (loss, outputs) if return_outputs else loss
-
-
+        if model.encoder.do_entropy_loss:
+            return model.encoder.entropy_loss  # Add entropy penalty
+        return 0
 
     def prediction_step(self, model, inputs, prediction_loss_only=False, ignore_keys=None):
         """
-        Override the prediction step to use `.generate()` for sequence generation tasks.
+        Perform a prediction step that supports:
+        - Encoder-decoder models (e.g., T5, BART)
+        - Encoder-only models (e.g., BERT for classification/regression)
+        - Decoder-only models (e.g., GPT for generation)
         """
         # Ensure the model is in evaluation mode
         model.eval()
 
-        # Extract input IDs and attention mask
+        # Extract common inputs
         input_ids = inputs.get("input_ids")
         attention_mask = inputs.get("attention_mask")
+        labels = inputs.get("labels", None)
 
-        # Generate predictions using the `.generate()` method
-        generated_tokens = model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_length=10,  # Adjust as needed
-            num_beams=1,    # Adjust as needed
-        )
+        # Determine model type
+        is_encoder_decoder = (hasattr(model.config, "is_encoder_decoder") 
+                and model.config.is_encoder_decoder and not self.is_classifier)
 
-        # Prepare labels (if available)
-        labels = inputs.get("labels")
+        is_decoder_only = (hasattr(model.config, "is_decoder") 
+                and model.config.is_decoder and not self.is_classifier)
 
-        # Compute loss (if required)
-        loss = None
-        if prediction_loss_only:
-            with torch.no_grad():
-                outputs = model(**inputs)
-                loss = outputs.loss
+        with torch.no_grad():
+            if is_encoder_decoder:
+                # Handle encoder-decoder models (T5, BART, etc.)
+                generated_tokens = model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    num_beams=1,
+                    repetition_penalty=2.0,
+                )
+                outputs = generated_tokens
+                loss = None
 
-        return (loss, generated_tokens, labels)
+                if prediction_loss_only and labels is not None:
+                    # Calculate loss if requested (not typically done during generation)
+                    model_outputs = model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels
+                    )
+                    loss = model_outputs.loss
+
+<<<<<<< HEAD
+=======
+            elif is_decoder_only:
+                # Handle decoder-only models (GPT, etc.)
+                generated_tokens = model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    num_beams=1,
+                    repetition_penalty=2.0,
+                )
+                outputs = generated_tokens
+                loss = None
+
+                if prediction_loss_only and labels is not None:
+                    model_outputs = model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels
+                    )
+                    loss = model_outputs.loss
+
+            else:
+                # Handle encoder-only models (BERT, etc.)
+                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                if type(outputs) == dict:
+                    logits = outputs["logits"]
+                else:
+                    logits = outputs.logits
+
+                # Determine output type based on logits shape
+                if logits.dim() == 2:  # Classification (batch_size, num_labels)
+                    predicted_tokens = logits.argmax(dim=-1)
+                elif logits.dim() == 1:  # Regression (batch_size,)
+                    predicted_tokens = logits
+                else:
+                    raise ValueError(f"Unexpected logits shape: {logits.shape}")
+
+                outputs = predicted_tokens
+                loss = None
+
+                if prediction_loss_only and labels is not None:
+                    loss_fct = torch.nn.CrossEntropyLoss() if logits.shape[-1] > 1 else torch.nn.MSELoss()
+                    loss = loss_fct(
+                        logits.view(-1, logits.shape[-1]) if logits.shape[-1] > 1 else logits.view(-1),
+                        labels.view(-1)
+                    )
+
+        return (loss, outputs, labels)
+
+
+from transformers import LogitsProcessor
+
+class TaskAwareLogitsProcessor(LogitsProcessor):
+    def __init__(self, task_id, task_labels, tokenizer):
+        """
+        task_labels: List of labels like ["positive", "negative"]
+        tokenizer: Tokenizer to get token IDs
+        """
+        # Convert label words to token IDs correctly
+        token_ids = [tokenizer(label, add_special_tokens=False)["input_ids"] for label in task_labels]
+        self.allowed_tokens = list(set([tid for sublist in token_ids for tid in sublist]))  # Flatten & remove duplicates
+        if tokenizer.eos_token_id is not None:
+            self.allowed_tokens.append(tokenizer.eos_token_id)
+
+
+    def __call__(self, input_ids, scores):
+        mask = torch.full_like(scores, -float("inf"))  # Initialize all as -inf
+        mask[:, self.allowed_tokens] = 0  # Allow only task-specific tokens
+        return scores + mask
+
+def get_model_dimension(config):
+    # Check for common attributes that represent the model's hidden size
+    if hasattr(config, "d_model"):  # For models like T5, BART, Marian
+        return config.d_model
+    elif hasattr(config, "hidden_size"):  # For models like GPT-2, BERT, RoBERTa
+        return config.hidden_size
+    elif hasattr(config, "n_embd"):  # For GPT-2 specifically
+        return config.n_embd
+    elif hasattr(config, "dim"):  # For some other architectures
+        return config.dim
+    else:
+        raise AttributeError(f"Could not determine model dimension for {model_name_or_path}. Config: {config}")
 
 import torch
 import torch.nn as nn
 from transformers import PreTrainedModel
 
 class CustomModelWrapper(PreTrainedModel):
+<<<<<<< HEAD
     def __init__(self, nested_model, base_config, attn_pt=None, num_labels=2):
         super().__init__(base_config)
         self.nested_model = nested_model
@@ -1733,42 +1980,63 @@ class CustomModelWrapper(PreTrainedModel):
 
 
 class CustomModelWrapper2(PreTrainedModel):
-    def __init__(self, nested_model, base_config, attn_pt=None):
+    def __init__(self, nested_model, base_config, attn_pt=None, cls=False, num_labels=2):
         super().__init__(base_config)
         self.nested_model = nested_model
-        self.encoder = attn_pt
+        self.encoder = attn_pt  # Optional prompt tuning module
+        self.classifier = None
+        if cls is True:
+            self.classifier = nn.Linear(base_config.d_model, num_labels)  # Classification head
 
-    def forward(self, input_ids: Optional[torch.Tensor] = None, 
-                inputs_embeds: Optional[torch.Tensor] = None, 
-                attention_mask: Optional[torch.Tensor] = None, 
-                labels=None,
+    def forward(self, input_ids: Optional[torch.Tensor] = None,
+                inputs_embeds: Optional[torch.Tensor] = None,
+                attention_mask: Optional[torch.Tensor] = None,
+                labels: Optional[torch.Tensor] = None,
                 **kwargs) -> Dict[str, Any]:
-        
+
         # Get the embedding layer from the base model
         embedding_layer = self.nested_model.get_input_embeddings()
-        if not self.training:
-            pass
-        # If input_ids are provided, convert them to embeddings
+
+        # Convert input_ids to embeddings if necessary
         if input_ids is not None:
             inputs_embeds = embedding_layer(input_ids)
-        
+
         # Apply prompt tuning if enabled
         if self.encoder is not None:
             input_ids, attention_mask, inputs_embeds = \
                 self.encoder.prompt_encoders_forward(
                     input_ids, inputs_embeds, att_mask=attention_mask
+                )
+
+        # Pass the inputs through the T5 encoder
+        if self.classifier is None:
+            # Pass the inputs to the base model
+            outputs = self.nested_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                labels=labels,
             )
+        else:
+            encoder_outputs = self.nested_model.encoder(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                return_dict=True
+            )
+            # Take the last hidden state (first token or pooled representation)
+            pooled_output = encoder_outputs.last_hidden_state[:, 0, :]  # CLS token representation
 
-        # Ensure decoder inputs are provided
-        # Pass the inputs to the base model
-        outputs = self.nested_model(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            labels=labels,
-        )
-        
+            # Apply classifier
+            logits = self.classifier(pooled_output)
+
+            outputs = {"logits": logits}
+
+            # Compute loss if labels are provided
+            if labels is not None:
+                loss_fct = nn.CrossEntropyLoss()
+                loss = loss_fct(logits, labels)
+                outputs["loss"] = loss
+
         return outputs
-
     def generate(self, input_ids: Optional[torch.Tensor] = None,
                  attention_mask: Optional[torch.Tensor] = None,
                  **kwargs):
@@ -1807,6 +2075,95 @@ class CustomModelWrapper2(PreTrainedModel):
 
         # Delegate generation to the nested model
         return self.nested_model.generate(**kwargs)
+
+
+class CustomModelWrapper_2(PreTrainedModel):
+    def __init__(self, nested_model, base_config, attn_pt=None):
+        super().__init__(base_config)
+        self.nested_model = nested_model
+        self.encoder = attn_pt
+        d_model = get_model_dimension(base_config)
+        self.classifier = nn.Linear(d_model, 3)  # Classification head
+
+    def forward(self, input_ids: Optional[torch.Tensor] = None, 
+                inputs_embeds: Optional[torch.Tensor] = None, 
+                attention_mask: Optional[torch.Tensor] = None, 
+                labels=None,
+                **kwargs) -> Dict[str, Any]:
+        embedding_layer = self.nested_model.get_input_embeddings()
+
+        # Convert input_ids to embeddings if provided
+        if input_ids is not None:
+            inputs_embeds = embedding_layer(input_ids)
+
+        # Apply prompt tuning if enabled
+        if self.encoder is not None:
+            input_ids, attention_mask, inputs_embeds = \
+                self.encoder.prompt_encoders_forward(
+                    input_ids, inputs_embeds, att_mask=attention_mask
+                )
+
+        # Forward pass
+        if hasattr(self.nested_model, "encoder"):  # Likely T5
+            outputs = self.nested_model.encoder(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask
+            )
+            pooled_output = outputs.last_hidden_state[:, 0, :]  # First token for classification
+
+        else:  # Likely BERT
+            outputs = self.nested_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask
+            )
+            if hasattr(outputs, "last_hidden_state"):  # Some BERT variants might have it
+                pooled_output = outputs.last_hidden_state[:, 0, :]
+            elif hasattr(outputs, "logits"):  # Standard BERT (SequenceClassifierOutput)
+                pooled_output = outputs.logits  # Already has classification logits
+            else:
+                raise ValueError("Unknown model output structure.")
+
+        logits = self.classifier(pooled_output) if pooled_output.dim() > 2 else pooled_output
+
+        # Compute loss if labels provided
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+
+        return {"loss": loss, "logits": logits} if labels is not None else logits
+
+    def forward_2(self, input_ids: Optional[torch.Tensor] = None, 
+                inputs_embeds: Optional[torch.Tensor] = None, 
+                attention_mask: Optional[torch.Tensor] = None, 
+                labels=None,
+                **kwargs) -> Dict[str, Any]:
+        
+        # Get the embedding layer from the base model
+        embedding_layer = self.nested_model.get_input_embeddings()
+        if not self.training:
+            pass
+        # If input_ids are provided, convert them to embeddings
+        if input_ids is not None:
+            inputs_embeds = embedding_layer(input_ids)
+        
+        # Apply prompt tuning if enabled
+        if self.encoder is not None:
+            input_ids, attention_mask, inputs_embeds = \
+                self.encoder.prompt_encoders_forward(
+                    input_ids, inputs_embeds, att_mask=attention_mask
+            )
+
+        # Ensure decoder inputs are provided
+        # Pass the inputs to the base model
+        outputs = self.nested_model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            labels=labels,
+        )
+        
+        return outputs
+
 
 # === Setup for Training === #
 def setup_training():
