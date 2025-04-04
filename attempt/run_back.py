@@ -3286,9 +3286,10 @@ def train(**kwargs):
             if add_or_attend_input:
                 x_labels.insert(0, "inp")
             img_list = []
-            for key, scores in score_dict.items():
+            for kk, scores in score_dict.items():
+                spec = kk + "|" + spec
                 img_buf = WBCallback.save_image(
-                    scores=scores,
+                    scores=list(scores), 
                     cbar=False,
                     vmin = vmin,
                     vmax = vmax,
@@ -3491,7 +3492,6 @@ def train(**kwargs):
                         total_score = 0
                         if not rm in task_scores:
                             task_scores[rm] = {}
-                        if not rm in pred_counts:
                             pred_counts[rm] = {}
                         gen_conf = {"rep_penalty":2.0}
                         gen_conf["ignore_zeros"] = kwargs.get("gen_ignore_zeros", ignore_zeros)
@@ -3518,7 +3518,6 @@ def train(**kwargs):
                         eval_folders[test_key].append(eval_folder_name)
                         if not test_key in task_scores[rm]:
                             task_scores[rm][test_key] = {}
-                        if not test_key in pred_counts[rm]:
                             pred_counts[rm][test_key] = {}
                         if method == "pt" or cross_pt:
                             targets = attn_pt.target_encoders_idx
@@ -3594,7 +3593,7 @@ def train(**kwargs):
                             else:
                               task_score = df[masking_scores[0]].mean() 
                             task_scores[rm][test_key][task] = task_score
-                            pred_counts[rm][test_key][task] = min(4, pred_count)
+                            pred_counts[rm][test_key][task] = pred_count
                             total_score += task_score 
                             da = {}
                             if use_wandb:
@@ -3734,14 +3733,11 @@ def train(**kwargs):
                                     selected_cols_idx = [torch.nonzero(row > 0)[:, -1] 
                                         for row in router_scores]
                                 base_scores = task_scores["no-mask_"+mtype][test_key]
-                                base_counts = pred_counts["no-mask_"+mtype][test_key]
                                 mask_scores = task_scores[rm][test_key]
-                                mask_pcounts = pred_counts[rm][test_key]
                                 for _task, _score in mask_scores.items():
                                     base_score = float(base_scores[_task])
-                                    base_count = float(base_counts[_task])
                                     score = float(_score) 
-                                    pcount = float(mask_pcounts[_task])
+                                    pcount = float(pred_counts[_task])
                                     if base_score == 0:
                                         effect = 0
                                     else:
@@ -3769,7 +3765,6 @@ def train(**kwargs):
                                         effect_scores[test_key][task_index, -2] = dif 
 
                                     effect_scores[test_key][task_index, -1] = base_score 
-                                    pred_scores[test_key][task_index, -1] = base_count 
                                     torch.set_printoptions(threshold=10_000)
                                     print(effect_scores[test_key]) 
                     #### end of for
@@ -3799,167 +3794,66 @@ def train(**kwargs):
                             vmin = kwargs.get("vmin", None),
                             p_labels = mask_labels)
                     gen_mask_counter += 1
-                
-        ########
-        sdf = pd.DataFrame(data=sdf_rows)
-        if False: #img_list:
-            new_im = combine_y(img_list)
-            fname = "pred_" + str(exp_info["expid"]) + ".png" 
-            if use_wandb:
-                wandb.log({fname:wandb.Image(new_im)})
-            else:
-                new_im.save(os.path.join(training_args.output_dir, "images", fname))
+                    
+            ########
+            sdf = pd.DataFrame(data=sdf_rows)
+            if False: #img_list:
+                new_im = combine_y(img_list)
+                fname = "pred_" + str(exp_info["expid"]) + ".png" 
+                if use_wandb:
+                    wandb.log({fname:wandb.Image(new_im)})
+                else:
+                    new_im.save(os.path.join(training_args.output_dir, "images", fname))
 
 
-        if cross_pt and False:
-            targets = attn_pt.target_encoders_idx
-            scores_matrix = attn_pt.attn_scores.index_select(0, targets)
-            router_scores = attn_pt.router.index_select(0, targets)
-            _tag = kwargs.setdefault("tag",[])
-            #if diff_args:
-            #    for k,v in diff_args["values_changed"].items():
-            #        if not "output_dir" in k and not "expid" in k:
+            if cross_pt and False:
+                targets = attn_pt.target_encoders_idx
+                scores_matrix = attn_pt.attn_scores.index_select(0, targets)
+                router_scores = attn_pt.router.index_select(0, targets)
+                _tag = kwargs.setdefault("tag",[])
+                #if diff_args:
+                #    for k,v in diff_args["values_changed"].items():
+                #        if not "output_dir" in k and not "expid" in k:
 
-            #           da[k] = v
-            _main_vars = main_vars.copy()
-            if "task_name" in _main_vars:
-                del _main_vars["task_name"]
+                #           da[k] = v
+                _main_vars = main_vars.copy()
+                if "task_name" in _main_vars:
+                    del _main_vars["task_name"]
 
-            global_scores.append(scores_matrix)
-            targets = attn_pt.target_encoders_idx
-            y_labels = [attn_pt.prompt_names[i] for i in targets]
-            y_labels = [y.replace("tar-","") for y in y_labels]
-            global_y_labels.extend(y_labels)
-            global_x_labels = attn_pt.prompt_names 
-            for score in [scores_matrix]: #[router_scores]
-                img_buf = WBCallback.save_image(scores=[score], 
-                   y_labels=y_labels,
-                   x_labels=attn_pt.prompt_names, 
-                   title = str(kwargs.expid) + str(_main_vars) \
-                            + "_" + model_args.attn_method,
-                    img_h=6.5 if multi_tasking else 2.5,
-                    df=None) 
-                if img_buf and False:
-                    cur_img = Image.open(img_buf)
-                    #tags_img = tag_to_image(da, get_image=True)
-                    #cur_img = combine_x([tags_img, cur_img])
-                    cat = Path(kwargs.save_path).parent
-                    sp = op.join(cat, "images") 
-                    Path(sp).mkdir(exist_ok=True, parents=True)
-                    pic = "router_" + str(exp_info["expid"])
-                    pp = sp + "/pred_" + pic + ".png"
-                    existing_images = glob.glob(op.join(sp, "pred_*.png"))
-                    merge_plots = kwargs.setdefault("merge_plots", False)
-                    if existing_images and merge_plots:
-                        pp = existing_images[0]
-                    if Path(pp).is_file():
-                        _image = Image.open(pp)
-                        cur_img = combine_y([cur_img, _image])
-                    cur_img.save(pp)
+                global_scores.append(scores_matrix)
+                targets = attn_pt.target_encoders_idx
+                y_labels = [attn_pt.prompt_names[i] for i in targets]
+                y_labels = [y.replace("tar-","") for y in y_labels]
+                global_y_labels.extend(y_labels)
+                global_x_labels = attn_pt.prompt_names 
+                for score in [scores_matrix]: #[router_scores]
+                    img_buf = WBCallback.save_image(scores=[score], 
+                       y_labels=y_labels,
+                       x_labels=attn_pt.prompt_names, 
+                       title = str(kwargs.expid) + str(_main_vars) \
+                                + "_" + model_args.attn_method,
+                        img_h=6.5 if multi_tasking else 2.5,
+                        df=None) 
+                    if img_buf and False:
+                        cur_img = Image.open(img_buf)
+                        #tags_img = tag_to_image(da, get_image=True)
+                        #cur_img = combine_x([tags_img, cur_img])
+                        cat = Path(kwargs.save_path).parent
+                        sp = op.join(cat, "images") 
+                        Path(sp).mkdir(exist_ok=True, parents=True)
+                        pic = "router_" + str(exp_info["expid"])
+                        pp = sp + "/pred_" + pic + ".png"
+                        existing_images = glob.glob(op.join(sp, "pred_*.png"))
+                        merge_plots = kwargs.setdefault("merge_plots", False)
+                        if existing_images and merge_plots:
+                            pp = existing_images[0]
+                        if Path(pp).is_file():
+                            _image = Image.open(pp)
+                            cur_img = combine_y([cur_img, _image])
+                        cur_img.save(pp)
 
-    if kwargs.setdefault("eval_test", False):
-        for task, test_dataset in test_datasets.items():
-            metrics = trainer.evaluate(eval_dataset=test_dataset,
-                                       max_length=data_args.test_max_target_length, 
-                                       num_beams=data_args.num_beams,
-                                       metric_key_prefix="test"
-                                       )
-            trainer.log_metrics("test", metrics)
-            trainer.save_metrics("test", metrics)
-
-    if model_args.save_prefix_only:
-        checkpoints = glob.glob(os.path.join(
-            training_args.output_dir, "checkpoint-*"))
-        for checkpoint_dir in checkpoints:
-            # save models
-            if not os.path.exists(os.path.join(checkpoint_dir, "pytorch_model.bin")):
-                continue
-            checkpoint_model = torch.load(os.path.join(
-                os.path.join(checkpoint_dir, "pytorch_model.bin")))
-            model.load_state_dict(checkpoint_model)
-            new_dir = "{}_prompt_only".format(checkpoint_dir)
-            os.mkdir(new_dir)
-            if adapter_args.prefix_tuning:
-                save_prompts(model, output_dir=new_dir, 
-                     prefix_dir = prefix_dir,
-                     attn_tuning=cross_pt,
-                     shared_attn=model_args.shared_attn, num_target=config.num_target, task_name=data_args.task_name)
-            if method == "pt" or cross_pt:
-                save_to_prompts_dir = kwargs.setdefault("save_to_prompts_dir", False) 
-                mylogs.bp("store")
-                if save_to_prompts_dir:
-                    Path(op.join(new_dir, "prompts")).mkdir(parents = True, exist_ok=True)
-                    attn_pt.store_encoders(output_dir = prompts_dir, prompts_only=True)
-
-            # after saving prompts, we will remove unnecessary checkpoint dir.
-            try:
-                shutil.rmtree(checkpoint_dir)
-            except OSError as e:
-                print("Error: %s : %s" % (checkpoint_dir, e.strerror))
-
-    # Evaluate all checkpoints on all tasks if training_args.eval_all_at_last==True
-    results = {}
-    if training_args.eval_all_at_last:
-        mylogs.bp("eval")
-        for checkpoint_dir in glob.glob(os.path.join(training_args.output_dir, "checkpoint-*_prompt_only")):
-            print(checkpoint_dir)
-            mylogs.bp("eval")
-            attention_paths = [os.path.join(checkpoint_dir, "attn_W_down.pt"), os.path.join(
-                checkpoint_dir, "attn_W_up.pt")]
-            trainer.model.update_attention_weights_sub(attention_paths)
-
-            if model_args.load_layer_norm is True and "layer_norm_bias.pt" in checkpoint_dir:
-                trainer.model.update_layer_norm_weights(checkpoint_dir)
-            dev_metrics_all = {}
-            dev_avg = []
-            logger.info("*** Evaluate ***")
-            for idx, (task, eval_dataset) in enumerate(eval_datasets.items()):
-                if idx > 0:
-                    print(task)
-                    print(eval_metrics)
-                shared_param = torch.load(os.path.join(
-                    checkpoint_dir, "prefix_embeddings_{}.pt".format(data_args.task_name[idx])))
-                trainer.model.update_prefix_weights_multi(
-                    shared_param, num_target=1)
-                metrics = trainer.evaluate(eval_dataset=eval_dataset,
-                                           max_length=data_args.val_max_target_length, 
-                                           num_beams=data_args.num_beams,
-                                           )
-                trainer.log_metrics("eval", metrics)
-                trainer.save_metrics("eval", metrics)
-                dev_metrics_all[task] = metrics
-                main_metric = list(metrics.values())[0]
-                dev_avg.append(main_metric)
-
-            results.setdefault(checkpoint_dir, {})
-            results[checkpoint_dir]["dev_avg"] = np.mean(dev_avg)
-            results[checkpoint_dir]["dev_each"] = dev_metrics_all
-
-        # Test
-        logger.info("*** Test ***")
-        for checkpoint_dir in glob.glob(os.path.join(training_args.output_dir, "checkpoint-*_prompt_only")):
-            # load models here
-            attention_paths = [os.path.join(checkpoint_dir, "attn_W_down.pt"), os.path.join(
-                checkpoint_dir, "attn_W_up.pt")]
-            trainer.model.update_attention_weights_sub(attention_paths)
-            if (model_args.load_layer_norm is True 
-                and "layer_norm_bias.pt" in checkpoint_dir):
-                trainer.model.update_layer_norm_weights(checkpoint_dir)
-            dpath = os.path.join(checkpoint_dir, router_prefix + "_router.pt")
-            if cross_pt and Path(dpath).is_file():
-                trainer.model.update_router(dpath)
-            else:
-                dpath = os.path.join(prompts_dir, router_prefix + "_router.pt")
-                if Path(dpath).is_file():
-                    trainer.model.update_router(dpath)
-
-            test_metrics_all = {}
-            test_avg = []
-            for idx, (task, test_dataset) in enumerate(test_datasets.items()):
-                shared_param = torch.load(os.path.join(
-                    checkpoint_dir, "prefix_embeddings_{}.pt".format(data_args.task_name[idx])))
-                trainer.model.update_prefix_weights_multi(
-                    shared_param, num_target=1)
+        if kwargs.setdefault("eval_test", False):
+            for task, test_dataset in test_datasets.items():
                 metrics = trainer.evaluate(eval_dataset=test_dataset,
                                            max_length=data_args.test_max_target_length, 
                                            num_beams=data_args.num_beams,
@@ -3967,16 +3861,117 @@ def train(**kwargs):
                                            )
                 trainer.log_metrics("test", metrics)
                 trainer.save_metrics("test", metrics)
-                test_metrics_all[task] = metrics
-                main_metric = list(metrics.values())[0]
-                test_avg.append(main_metric)
-            results.setdefault(checkpoint_dir, {})
-            results[checkpoint_dir]["test_avg"] = np.mean(test_avg)
-            results[checkpoint_dir]["test_each"] = test_metrics_all
-    print(results)
-    if use_wandb:
-        wandb.finish()
-    return results
 
-if __name__ == "__main__":
-   cli()
+        if model_args.save_prefix_only:
+            checkpoints = glob.glob(os.path.join(
+                training_args.output_dir, "checkpoint-*"))
+            for checkpoint_dir in checkpoints:
+                # save models
+                if not os.path.exists(os.path.join(checkpoint_dir, "pytorch_model.bin")):
+                    continue
+                checkpoint_model = torch.load(os.path.join(
+                    os.path.join(checkpoint_dir, "pytorch_model.bin")))
+                model.load_state_dict(checkpoint_model)
+                new_dir = "{}_prompt_only".format(checkpoint_dir)
+                os.mkdir(new_dir)
+                if adapter_args.prefix_tuning:
+                    save_prompts(model, output_dir=new_dir, 
+                         prefix_dir = prefix_dir,
+                         attn_tuning=cross_pt,
+                         shared_attn=model_args.shared_attn, num_target=config.num_target, task_name=data_args.task_name)
+                if method == "pt" or cross_pt:
+                    save_to_prompts_dir = kwargs.setdefault("save_to_prompts_dir", False) 
+                    mylogs.bp("store")
+                    if save_to_prompts_dir:
+                        Path(op.join(new_dir, "prompts")).mkdir(parents = True, exist_ok=True)
+                        attn_pt.store_encoders(output_dir = prompts_dir, prompts_only=True)
+
+                # after saving prompts, we will remove unnecessary checkpoint dir.
+                try:
+                    shutil.rmtree(checkpoint_dir)
+                except OSError as e:
+                    print("Error: %s : %s" % (checkpoint_dir, e.strerror))
+
+        # Evaluate all checkpoints on all tasks if training_args.eval_all_at_last==True
+        results = {}
+        if training_args.eval_all_at_last:
+            mylogs.bp("eval")
+            for checkpoint_dir in glob.glob(os.path.join(training_args.output_dir, "checkpoint-*_prompt_only")):
+                print(checkpoint_dir)
+                mylogs.bp("eval")
+                attention_paths = [os.path.join(checkpoint_dir, "attn_W_down.pt"), os.path.join(
+                    checkpoint_dir, "attn_W_up.pt")]
+                trainer.model.update_attention_weights_sub(attention_paths)
+
+                if model_args.load_layer_norm is True and "layer_norm_bias.pt" in checkpoint_dir:
+                    trainer.model.update_layer_norm_weights(checkpoint_dir)
+                dev_metrics_all = {}
+                dev_avg = []
+                logger.info("*** Evaluate ***")
+                for idx, (task, eval_dataset) in enumerate(eval_datasets.items()):
+                    if idx > 0:
+                        print(task)
+                        print(eval_metrics)
+                    shared_param = torch.load(os.path.join(
+                        checkpoint_dir, "prefix_embeddings_{}.pt".format(data_args.task_name[idx])))
+                    trainer.model.update_prefix_weights_multi(
+                        shared_param, num_target=1)
+                    metrics = trainer.evaluate(eval_dataset=eval_dataset,
+                                               max_length=data_args.val_max_target_length, 
+                                               num_beams=data_args.num_beams,
+                                               )
+                    trainer.log_metrics("eval", metrics)
+                    trainer.save_metrics("eval", metrics)
+                    dev_metrics_all[task] = metrics
+                    main_metric = list(metrics.values())[0]
+                    dev_avg.append(main_metric)
+
+                results.setdefault(checkpoint_dir, {})
+                results[checkpoint_dir]["dev_avg"] = np.mean(dev_avg)
+                results[checkpoint_dir]["dev_each"] = dev_metrics_all
+
+            # Test
+            logger.info("*** Test ***")
+            for checkpoint_dir in glob.glob(os.path.join(training_args.output_dir, "checkpoint-*_prompt_only")):
+                # load models here
+                attention_paths = [os.path.join(checkpoint_dir, "attn_W_down.pt"), os.path.join(
+                    checkpoint_dir, "attn_W_up.pt")]
+                trainer.model.update_attention_weights_sub(attention_paths)
+                if (model_args.load_layer_norm is True 
+                    and "layer_norm_bias.pt" in checkpoint_dir):
+                    trainer.model.update_layer_norm_weights(checkpoint_dir)
+                dpath = os.path.join(checkpoint_dir, router_prefix + "_router.pt")
+                if cross_pt and Path(dpath).is_file():
+                    trainer.model.update_router(dpath)
+                else:
+                    dpath = os.path.join(prompts_dir, router_prefix + "_router.pt")
+                    if Path(dpath).is_file():
+                        trainer.model.update_router(dpath)
+
+                test_metrics_all = {}
+                test_avg = []
+                for idx, (task, test_dataset) in enumerate(test_datasets.items()):
+                    shared_param = torch.load(os.path.join(
+                        checkpoint_dir, "prefix_embeddings_{}.pt".format(data_args.task_name[idx])))
+                    trainer.model.update_prefix_weights_multi(
+                        shared_param, num_target=1)
+                    metrics = trainer.evaluate(eval_dataset=test_dataset,
+                                               max_length=data_args.test_max_target_length, 
+                                               num_beams=data_args.num_beams,
+                                               metric_key_prefix="test"
+                                               )
+                    trainer.log_metrics("test", metrics)
+                    trainer.save_metrics("test", metrics)
+                    test_metrics_all[task] = metrics
+                    main_metric = list(metrics.values())[0]
+                    test_avg.append(main_metric)
+                results.setdefault(checkpoint_dir, {})
+                results[checkpoint_dir]["test_avg"] = np.mean(test_avg)
+                results[checkpoint_dir]["test_each"] = test_metrics_all
+        print(results)
+        if use_wandb:
+            wandb.finish()
+        return results
+
+    if __name__ == "__main__":
+       cli()

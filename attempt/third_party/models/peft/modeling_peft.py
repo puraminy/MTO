@@ -194,6 +194,8 @@ def normalize_scores(scores, method="soft",
         scores = F.softmax(scores, 0)
     elif method == "sigmoid":
         scores = torch.sigmoid(scores)  
+    elif method == "sigtemp":
+        scores = torch.sigmoid(scores / temperature)  
     elif method == "sign":
         scores[scores <= 0] = 0
         scores[scores > 0] = 1
@@ -893,7 +895,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         mylogs.bp("before")
         if self.training and "before" in self.norm_method and self.attn_method != "const":
             method = self.norm_method.replace("before_","")
-            attn_scores = normalize_scores(attn_scores, method, is_training=self.training) 
+            attn_scores = normalize_scores(attn_scores, method, 
+                    is_training=self.training, temperature=self.temperature) 
 
         self.update_entropy_loss(attn_scores)
         #if compose_method in ["cat","concat","catw"]: #,"pool","mpool"]:
@@ -1825,6 +1828,7 @@ class CustomTrainer(Trainer):
 
         is_decoder_only = (hasattr(model.config, "is_decoder") 
                 and model.config.is_decoder and not self.is_classifier)
+        logits_processor = [TaskAwareLogitsProcessor(self.task_labels, self.processing_class)]
 
         with torch.no_grad():
             if is_encoder_decoder:
@@ -1834,6 +1838,7 @@ class CustomTrainer(Trainer):
                     attention_mask=attention_mask,
                     num_beams=1,
                     repetition_penalty=2.0,
+                    logits_processor=logits_processor
                 )
                 outputs = generated_tokens
                 loss = None
@@ -1854,6 +1859,7 @@ class CustomTrainer(Trainer):
                     attention_mask=attention_mask,
                     num_beams=1,
                     repetition_penalty=2.0,
+                    logits_processor=logits_processor
                 )
                 outputs = generated_tokens
                 loss = None
@@ -1898,7 +1904,7 @@ class CustomTrainer(Trainer):
 from transformers import LogitsProcessor
 
 class TaskAwareLogitsProcessor(LogitsProcessor):
-    def __init__(self, task_id, task_labels, tokenizer):
+    def __init__(self, task_labels, tokenizer):
         """
         task_labels: List of labels like ["positive", "negative"]
         tokenizer: Tokenizer to get token IDs
