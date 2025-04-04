@@ -343,6 +343,7 @@ import debugpy
 import os.path as op
 def map_param(param_map, x, key=False):
     k, v = x, ""
+    breakpoint()
     if "=" in x:
         k, v = x.split("=")
     k = k.strip("--")
@@ -707,7 +708,17 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        with open(param_file) as f:
           param_map = json.load(f)
 
-   all_vars = [map_param(param_map, x) for x in ctx.args]
+   all_vars = []
+   for x in ctx.args:
+       if x.startswith("--"):
+          _xx = x.strip("--")
+          if not "--" in _xx:
+              all_vars.append(map_param(param_map,x,key=False))
+          else:
+              x1, x2 = _xx.split("--")
+              all_vars.append(map_param(param_map,x1,key=False))
+              all_vars.append(map_param(param_map,"^" + x2,key=False))
+
    # all_vars = [x.strip("--") for x in ctx.args]
    mylogs.bp("vars")
    var_names = [x.split("=")[0] for x in all_vars] 
@@ -737,7 +748,17 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    if not main_vars:
        main_vars = [vv.strip("@") for vv in var_names if vv.endswith("@")]
    if not main_vars:
-       main_vars = [map_param(param_map,x,key=True) for x in ctx.args if x.startswith("--")]
+       main_vars = []
+       for x in ctx.args:
+           if x.startswith("--"):
+              _xx = x.strip("--")
+              if not "--" in _xx:
+                  main_vars.append(map_param(param_map,x,key=True))
+              else:
+                  x1, x2 = _xx.split("--")
+                  main_vars.append(map_param(param_map,x1,key=True))
+                  main_vars.append(map_param(param_map,"^" + x2,key=True))
+                  
    for var in main_vars:
        if not var: continue
        var = map_param(param_map, var)

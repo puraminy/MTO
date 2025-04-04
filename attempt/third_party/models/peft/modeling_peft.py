@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
+from torch.distributions import Gumbel
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
 from transformers import T5ForConditionalGeneration, PreTrainedModel
@@ -127,7 +128,7 @@ def normalize_scores(scores, method="soft",
         sel_thresh=None, 
         gen_thresh_min=None, 
         gen_thresh_max=None, 
-        resample=False, is_training=False):
+        resample=False, is_training=False, temperature=1):
 
     if method == "rb" or resample is True:
         scores = RelaxedBernoulli(temperature=gen_thresh_min or 0.0001, 
@@ -176,11 +177,13 @@ def normalize_scores(scores, method="soft",
        pass 
     elif method == "direct" or method == "soft" or method == "srelu":
         if is_training:
-            scores=scores / scores.sum(dim=-1, keepdim=True) 
+            #scores=scores / scores.sum(dim=-1, keepdim=True) 
             # Add a small positive constant to the scores
             epsilon = 1e-8  # Adjust the value of epsilon as needed
             scores += epsilon
         scores = F.softmax(scores, -1)
+    elif method == "softemp":
+        scores = F.softmax(scores / temperature, -1)
     elif method == "tanh":
         scores = torch.tanh(scores)
     elif method == "ssig":
@@ -853,9 +856,13 @@ class AttentivePromptEncoder(torch.nn.Module):
             if self.training: # and self.learn_attention:
                 logits = router
                 mylogs.bp("rbsample")
-                rb_scores = RelaxedBernoulli(temperature=self.temperature, 
-                    logits=logits).rsample()            
-                if route_method == "params":
+                if route_method == "rb":
+                    attn_scores = RelaxedBernoulli(temperature=self.temperature, 
+                        logits=logits).rsample()            
+                elif route_method == "gumb":
+                    gumb_scores = Gumbel(0, 1).sample(router.shape).to(router.device)
+                    attn_scores = (router + gumb_scores) / self.temperature 
+                elif route_method == "params":
                     attn_scores = router
                 elif route_method == "const":
                     attn_scores  = attn_dist
@@ -863,8 +870,10 @@ class AttentivePromptEncoder(torch.nn.Module):
                 elif route_method == "importance":
                     col_sums = torch.sum(router, dim=0)
                     attn_scores = rb_scores * col_sums
+                elif route_method == "soft":
+                    attn_scores = router
                 else:
-                    attn_scores = rb_scores # + attn_dist
+                    raise ValueError("Not recognized route method:" + route_method)
             elif not self.training:
                 mylogs.bp("route")
                 #attn_scores = router
@@ -987,7 +996,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         if self.training and self.attn_method != "const":
             method = self.norm_method.replace("after_","")
             attn_sel_scores = normalize_scores(attn_sel_scores, method, 
-                    sel_thresh=self.sel_thresh, is_training=self.training)
+                    sel_thresh=self.sel_thresh, is_training=self.training, 
+                    temperature=self.temperature)
 
         mylogs.bp("params")
         if route_method == "params":
