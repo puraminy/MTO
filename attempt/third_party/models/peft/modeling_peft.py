@@ -194,6 +194,8 @@ def normalize_scores(scores, method="soft",
         scores = F.softmax(scores, 0)
     elif method == "sigmoid":
         scores = torch.sigmoid(scores)  
+    elif method == "sigtemp":
+        scores = torch.sigmoid(scores / temperature)  
     elif method == "sign":
         scores[scores <= 0] = 0
         scores[scores > 0] = 1
@@ -893,7 +895,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         mylogs.bp("before")
         if self.training and "before" in self.norm_method and self.attn_method != "const":
             method = self.norm_method.replace("before_","")
-            attn_scores = normalize_scores(attn_scores, method, is_training=self.training) 
+            attn_scores = normalize_scores(attn_scores, method, 
+                    is_training=self.training, temperature=self.temperature) 
 
         self.update_entropy_loss(attn_scores)
         #if compose_method in ["cat","concat","catw"]: #,"pool","mpool"]:
@@ -1645,13 +1648,6 @@ import torch.nn.functional as F
 from transformers import Trainer
 
 class CustomTrainer(Trainer):
-<<<<<<< HEAD
-    def compute_loss_2(self, model, inputs, return_outputs=False, **kwargs):
-=======
-    """
-    Custom Trainer for T5 with soft prompt tuning, contrastive loss, and router loss.
-    """
-
     def __init__(self, model, alpha=0.9, beta=0.05, temperature=0.07, cls=False, *args, **kwargs):
         super().__init__(model, *args, **kwargs)
         self.alpha = alpha  # Weight for contrastive loss
@@ -1828,6 +1824,7 @@ class CustomTrainer(Trainer):
 
         is_decoder_only = (hasattr(model.config, "is_decoder") 
                 and model.config.is_decoder and not self.is_classifier)
+        logits_processor = [TaskAwareLogitsProcessor(self.task_labels, self.processing_class)]
 
         with torch.no_grad():
             if is_encoder_decoder:
@@ -1837,6 +1834,7 @@ class CustomTrainer(Trainer):
                     attention_mask=attention_mask,
                     num_beams=1,
                     repetition_penalty=2.0,
+                    # logits_processor=logits_processor
                 )
                 outputs = generated_tokens
                 loss = None
@@ -1849,9 +1847,6 @@ class CustomTrainer(Trainer):
                         labels=labels
                     )
                     loss = model_outputs.loss
-
-<<<<<<< HEAD
-=======
             elif is_decoder_only:
                 # Handle decoder-only models (GPT, etc.)
                 generated_tokens = model.generate(
@@ -1859,6 +1854,7 @@ class CustomTrainer(Trainer):
                     attention_mask=attention_mask,
                     num_beams=1,
                     repetition_penalty=2.0,
+                    #logits_processor=logits_processor
                 )
                 outputs = generated_tokens
                 loss = None
@@ -1903,7 +1899,7 @@ class CustomTrainer(Trainer):
 from transformers import LogitsProcessor
 
 class TaskAwareLogitsProcessor(LogitsProcessor):
-    def __init__(self, task_id, task_labels, tokenizer):
+    def __init__(self, task_labels, tokenizer):
         """
         task_labels: List of labels like ["positive", "negative"]
         tokenizer: Tokenizer to get token IDs
@@ -1938,58 +1934,6 @@ import torch.nn as nn
 from transformers import PreTrainedModel
 
 class CustomModelWrapper(PreTrainedModel):
-<<<<<<< HEAD
-    def __init__(self, nested_model, base_config, attn_pt=None, num_labels=2):
-        super().__init__(base_config)
-        self.nested_model = nested_model
-        self.encoder = attn_pt  # Optional prompt tuning module
-        self.classifier = nn.Linear(base_config.d_model, num_labels)  # Classification head
-
-    def forward(self, input_ids: Optional[torch.Tensor] = None, 
-                inputs_embeds: Optional[torch.Tensor] = None, 
-                attention_mask: Optional[torch.Tensor] = None, 
-                labels: Optional[torch.Tensor] = None,
-                **kwargs) -> Dict[str, Any]:
-        
-        # Get the embedding layer from the base model
-        embedding_layer = self.nested_model.get_input_embeddings()
-
-        # Convert input_ids to embeddings if necessary
-        if input_ids is not None:
-            inputs_embeds = embedding_layer(input_ids)
-
-        # Apply prompt tuning if enabled
-        if self.encoder is not None:
-            input_ids, attention_mask, inputs_embeds = \
-                self.encoder.prompt_encoders_forward(
-                    input_ids, inputs_embeds, att_mask=attention_mask
-                )
-
-        # Pass the inputs through the T5 encoder
-        encoder_outputs = self.nested_model.encoder(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            return_dict=True
-        )
-
-        # Take the last hidden state (first token or pooled representation)
-        pooled_output = encoder_outputs.last_hidden_state[:, 0, :]  # CLS token representation
-
-        # Apply classifier
-        logits = self.classifier(pooled_output)
-
-        outputs = {"logits": logits}
-
-        # Compute loss if labels are provided
-        if labels is not None:
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(logits, labels)
-            outputs["loss"] = loss
-
-        return outputs
-
-
-class CustomModelWrapper2(PreTrainedModel):
     def __init__(self, nested_model, base_config, attn_pt=None, cls=False, num_labels=2):
         super().__init__(base_config)
         self.nested_model = nested_model

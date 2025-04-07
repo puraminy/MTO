@@ -1666,7 +1666,7 @@ class YelpPolarity(Sentiment):
 
     def load_dataset(self, split):
         print(split)
-        return datasets.load_dataset('yelp_polarity')[split]
+        return datasets.load_dataset('fancyzhx/yelp_polarity')[split]
 
     def preprocessor(self, example, prefix):
         src_texts = ["sentence:", example['text']]
@@ -2958,8 +2958,8 @@ TASK_MAPPING = OrderedDict(
         ("common-gen", CommonGen),
         ("winogrande", WinoGrande),
         ("scitail", SciTail),
-        ('yelp-polarity', YelpPolarity),
-        ('amazon-polarity', Amazon_Polarity),
+        ('yelp', YelpPolarity),
+        ('amazon', Amazon_Polarity),
         ('paws', PAWS),
     ]
 )
