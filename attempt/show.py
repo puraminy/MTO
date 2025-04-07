@@ -3308,7 +3308,11 @@ def show_df(df, summary=False):
             backit(df, sel_cols)
             eid = df.iloc[sel_row]['eid'] 
             dfs = []
-            for prefix in pcols:
+            if "prefix" in df:
+                pfx_cols = df["prefix"].unique()
+            else:
+                pfx_cols = pcols
+            for prefix in pfx_cols:
                 if "prefix" in df:
                     _, scores = get_sel_rows(df, None, col="rouge_score", from_main=False) 
                     _, prefixes = get_sel_rows(df, None, col="prefix", from_main=False) 
