@@ -3156,8 +3156,9 @@ def train(**kwargs):
                 no_mask_preds[task] = (predictions, labels, metrics)
             
             mylogs.bp("gen")
-            trainer.log_metrics("test", metrics)
-            trainer.save_metrics("test", metrics)
+            if False:
+                trainer.log_metrics("test", metrics)
+                trainer.save_metrics("test", metrics)
             skip_specials=kwargs.setdefault("skip_specials", True) 
 
             # sssssssssss
