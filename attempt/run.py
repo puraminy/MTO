@@ -2845,7 +2845,7 @@ def train(**kwargs):
             "GB"
         )
         performance_metrics.update({"peak_memory": peak_memory})
-    if training_args.compute_memory or training_args.compute_time:
+    if False: #training_args.compute_memory or training_args.compute_time:
         trainer.save_metrics("performance", performance_metrics)
 
     # Validation
