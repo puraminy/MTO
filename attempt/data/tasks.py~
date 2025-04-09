@@ -1490,7 +1490,6 @@ class MRPC(AbstractTask):
 
 class MRPC1(MRPC):
     name = "mrpc1"
-    task_name = "mrpc"
     split_folder = {"train": "mrpc", "test":"mrpc"}
     labels_map = {
             "map": {"0":"not_equivalent","1":"equivalent"},
@@ -1501,7 +1500,6 @@ class MRPC1(MRPC):
 
 class MRPC2(MRPC):
     name = "mrpc2"
-    task_name = "mrpc"
     split_folder = {"train": "mrpc", "test":"mrpc"}
     labels_map = {
             "map2": {"0":"not_equivalent","1":"equivalent"},

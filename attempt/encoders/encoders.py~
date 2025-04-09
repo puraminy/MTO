@@ -29,7 +29,6 @@ class PromptEncoder(torch.nn.Module):
             tokenizer=None, is_source =False): 
         super().__init__()
         self.name = name
-        self.load_name = name
         self.prompt_tokens = prompt_tokens
         self.length = len(prompt_tokens) if prompt_tokens else length
         self.embedding_dim = model.config.hidden_size
@@ -84,7 +83,7 @@ class PromptEncoder(torch.nn.Module):
         return prompt_ids 
 
     def get_filename(self, length=None, prefix="", as_saved=False, name=""):
-        if not name: name = self.load_name if self.load_name else self.name
+        if not name: name = self.name
         length = length if length is not None else self.length
         if as_saved: 
             fname= (prefix + "_" if prefix else "") + \

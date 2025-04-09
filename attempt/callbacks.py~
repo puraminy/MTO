@@ -2,7 +2,7 @@
 import seaborn as sns
 #import PIL
 import matplotlib.pyplot as plt
-# from transformers.integrations import WandbCallback
+from transformers.integrations import WandbCallback
 from transformers.trainer_callback import TrainerCallback 
 from math import floor
 import attempt.mylogs as mylogs

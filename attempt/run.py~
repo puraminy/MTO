@@ -2786,7 +2786,7 @@ def train(**kwargs):
 
             save_router = kwargs.setdefault("save_router", False) 
             mylogs.bp("store")
-            if False: # save_to_prompts_dir or save_router:
+            if save_to_prompts_dir or save_router:
                 Path(prompts_dir).mkdir(parents = True, exist_ok=True)
                 attn_pt.store_encoders(output_dir = prompts_dir, 
                         prompts_and_router_only=cross_pt, 
@@ -2800,7 +2800,7 @@ def train(**kwargs):
         if save_model_default:
             save_model_default = "template"
         save_model = kwargs.setdefault("save_model", save_model_default)
-        if save_model and False: #TODO
+        if save_model:
             # save all model parameters and tokenizers 
             # regardless of whether they are updated or not.
             model_name = Path(model_name_or_path).stem
