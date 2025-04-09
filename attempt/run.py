@@ -2636,6 +2636,8 @@ def train(**kwargs):
     print(train_dataset[0]) # it includes task_ids
     training_args.remove_unused_columns = False
     training_args.eval_strategy = "no"
+    training_args.save_strategy="no"  # This disables checkpoint saving
+    training_args.save_total_limit=0
     if kwargs.use_optimizer: #TODO remove condition and the else part 
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(
