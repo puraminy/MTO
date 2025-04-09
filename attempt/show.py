@@ -1423,7 +1423,7 @@ def show_df(df, summary=False):
             # grm = tdf.iloc[0]["gen_route_methods"]
             runid = tdf.iloc[0]["eid"]
             #run = "wandb/offline*" + str(runid) + f"/files/media/images/{start}*.png"
-            run = "img_logs/{start}*.png"
+            run = "img_logs/*{start}*.png"
             paths = glob(str(path.parent) +"/img_logs/*.png")
             # paths = glob(run)
             spath = "images/exp-" + str(runid)
@@ -3338,7 +3338,7 @@ def show_df(df, summary=False):
 
                 _cols = ["pred_text1", "target_text"]
                 for eid, acc, mt, label, prefix in zip(exprs, scores, mask_types, labels, prefixes):
-                    tdf = main_df.loc[(main_df.eid == eid) & (main_df.prefix == prefix), _cols]
+                    tdf = main_df.loc[(main_df.eid == eid) & (main_df.prefix == prefix) & (main_df.mask_type == mt), _cols]
                     canceled, val = False, "pred_text1" # list_values(sel_cols)
                     if not canceled:
                         treatment = 'target_text' #sel_cols[cur_col]
@@ -3399,6 +3399,7 @@ def show_df(df, summary=False):
                col_widths[col] = len(col) + 2
             #adjust = False
             left = 0
+            cur_row = 0
             sel_rows= []
             context = "cross"
             group_col = "label"
@@ -5103,7 +5104,7 @@ def start(stdscr):
 @click.option(
     "--limit",
     "-l",
-    default=150,
+    default=250,
     type=int,
     help="Limit of datasets to load"
 )

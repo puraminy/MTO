@@ -2635,6 +2635,7 @@ def train(**kwargs):
     exp_info["rgrad-nrgrad"] = str(rgrad) + "|" + str(nrgrad)
     print(train_dataset[0]) # it includes task_ids
     training_args.remove_unused_columns = False
+    training_args.eval_strategy = "no"
     if kwargs.use_optimizer: #TODO remove condition and the else part 
         # Initialize our Trainer
         # trainer = Seq2SeqTrainer(

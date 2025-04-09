@@ -13,6 +13,7 @@
   "preview": null,
   "reval": false,
   "evaluation_strategy":"no",
+  "eval_strategy":"no",
   "use_wandb": false,
   "method": "ptat",
   "data_path": "datasets",
