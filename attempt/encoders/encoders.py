@@ -86,6 +86,7 @@ class PromptEncoder(torch.nn.Module):
 
     def get_filename(self, length=None, prefix="", as_saved=False, name=""):
         if not name: name = self.load_name if self.load_name else self.name
+        self.enc_type = "rmlp"
         length = length if length is not None else self.length
         if as_saved: 
             fname= (prefix + "_" if prefix else "") + \
