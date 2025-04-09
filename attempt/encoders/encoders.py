@@ -26,10 +26,11 @@ def _isin(tensor:torch.Tensor,values:torch.Tensor):
 class PromptEncoder(torch.nn.Module):
     enc_type = "encoder"
     def __init__(self, name, prompt_tokens, length=None, model=None, 
-            tokenizer=None, is_source =False): 
+            tokenizer=None, is_source =False, enc_type="encoder"): 
         super().__init__()
         self.name = name
         self.load_name = name
+        self.enc_type = enctype
         self.prompt_tokens = prompt_tokens
         self.length = len(prompt_tokens) if prompt_tokens else length
         self.embedding_dim = model.config.hidden_size
@@ -518,7 +519,7 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 out_dim = out_dim,
                 is_source = is_source,
                 num_layers=num_layers, 
-                hidden_size=hidden_size)
+                hidden_size=hidden_size, enc_type=encoder_type)
         elif encoder_type.startswith("mlpres"):
             res_type = "MLP1"
             if len(encoder_type.split("@")) > 0:
@@ -543,12 +544,14 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 out_dim = out_dim,
                 is_source = is_source,
                 num_layers=num_layers, 
+                enc_type=encoder_type,
                 hidden_size=hidden_size)
     elif encoder_type.startswith("emb"):
         prompt_encoder = EmbeddingPromptEncoder(name = name,
                 model=model, tokenizer=tokenizer,
                 length = length,
                 is_source = is_source,
+                enc_type=encoder_type,
                 prompt_tokens=prompt_tokens) 
 
     elif encoder_type.startswith("mat"):
