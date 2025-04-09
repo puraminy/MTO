@@ -2010,7 +2010,7 @@ def train(**kwargs):
             encoder_type = adapter_args.prompt_encoder_type
             if "_for" in encoder_name:
                 encoder_type = kwargs.get("private_prompt_encoder_type", encoder_type)
-                encoder_type = encoder_type 
+                encoder_type = "rmlp" #TODO remove it encoder_type 
             encoder, enc_type = create_encoder(encoder_name, model, tokenizer, 
                     prompt_tokens=[],
                     non_linear = prompt_non_linear,

@@ -510,6 +510,7 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 non_linear = _enc_type[3]
 
         # assert False, str(num_layers) + "-" + str(hidden_size) + "-" + str(non_linear)
+        encoder_type = "rmlp" #TODO remove it
         if encoder_type == "mlp_res" or encoder_type == "rmlp":
             prompt_encoder = ResidualMLPPromptEncoder(name = name,
                 model=model, tokenizer=tokenizer,
