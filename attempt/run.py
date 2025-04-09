@@ -2761,7 +2761,7 @@ def train(**kwargs):
         #    load_model(best_chk_path, lsp)
 
         # Save prompts
-        if method == "pt" or cross_pt:
+        if method == "pt":
             #if not cross_pt: 
             #    prompts_prefix = "pt_" + prompts_prefix 
             #else: 
@@ -2778,7 +2778,7 @@ def train(**kwargs):
                     str(data_args.max_train_samples)
             if not prompts_to_save:
                 prompts_to_save = "all" if save_all_prompts else None
-            if save_all_prompts and False: #TODO should check
+            if save_all_prompts: #TODO should check
                 attn_pt.store_encoders(output_dir = training_args.output_dir,
                                  prompts_and_router_only=cross_pt, 
                                  save_source_prompts = ssp, 
@@ -2789,7 +2789,7 @@ def train(**kwargs):
 
             save_router = kwargs.setdefault("save_router", False) 
             mylogs.bp("store")
-            if False: # save_to_prompts_dir or save_router:
+            if save_to_prompts_dir:
                 Path(prompts_dir).mkdir(parents = True, exist_ok=True)
                 attn_pt.store_encoders(output_dir = prompts_dir, 
                         prompts_and_router_only=cross_pt, 
