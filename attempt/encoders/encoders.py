@@ -30,7 +30,7 @@ class PromptEncoder(torch.nn.Module):
         super().__init__()
         self.name = name
         self.load_name = name
-        self.enc_type = enctype
+        self.enc_type = enc_type
         self.prompt_tokens = prompt_tokens
         self.length = len(prompt_tokens) if prompt_tokens else length
         self.embedding_dim = model.config.hidden_size
