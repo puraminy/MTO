@@ -2830,8 +2830,9 @@ def train(**kwargs):
         )
         train_metrics["train_samples"] = min(
             max_train_samples, len(train_dataset))
-        trainer.log_metrics("train", train_metrics)
-        trainer.save_metrics("train", train_metrics)
+        if False: #TODO save or not
+            trainer.log_metrics("train", train_metrics)
+            trainer.save_metrics("train", train_metrics)
 
         if not model_args.save_prefix_only:
             trainer.save_state()
