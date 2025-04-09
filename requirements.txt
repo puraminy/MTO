@@ -6,3 +6,4 @@
  wandb
  deepdiff
  appdirs
+ ipdb
