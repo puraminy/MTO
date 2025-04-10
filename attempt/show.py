@@ -3345,8 +3345,8 @@ def show_df(df, summary=False):
                         tdf = pd.crosstab(tdf[val], tdf[treatment], margins=True)
                     tdf["preds"] = list(tdf.axes[0])
                     count_columns = tdf.columns[tdf.columns != 'preds']
-                    tdf['first_word'] = tdf['preds'].str.split().str[0]
-                    tdf['group'] = tdf['first_word'].str[:5]
+                    # tdf['first_word'] = tdf['preds'].str.split().str[0]
+                    tdf['group'] = tdf['preds']#.str[:5]
                     gdf = tdf.groupby('group').agg({
                         'preds': lambda x: x.head(1),  # Preserve the first 'text' value in each group
                         **{col: 'sum' for col in count_columns}  # Sum up the count columns
@@ -5104,7 +5104,7 @@ def start(stdscr):
 @click.option(
     "--limit",
     "-l",
-    default=250,
+    default=-1,
     type=int,
     help="Limit of datasets to load"
 )
