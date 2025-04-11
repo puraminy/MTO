@@ -16,6 +16,180 @@ import numpy as np
 from torch.utils.data.dataset import Dataset
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+class PromptComposer(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        
+        # Initialize components based on config
+        self._init_attention_mechanism()
+        self._init_composition_methods()
+        self._init_normalization()
+        
+    def _init_attention_mechanism(self):
+        """Initialize attention/scoring components"""
+        if self.config.attn_method == "rb":
+            self.router = nn.Parameter(torch.randn(
+                self.config.num_tasks, self.config.num_sources))
+        elif self.config.attn_method == "gated":
+            # Gating network for MoE
+            self.gate = nn.Sequential(
+                nn.Linear(self.config.model_dim, self.config.num_sources),
+                nn.Softmax(dim=-1))
+    
+    def _init_composition_methods(self):
+        """Initialize components for different composition methods"""
+        if "lin" in self.config.compose_method:
+            self.comp_linear = nn.Linear(
+                self.config.num_sources * self.config.src_prompt_dim * self.config.model_dim,
+                self.config.num_targets * self.config.model_dim)
+        
+        if "sub" in self.config.compose_method:
+            # Low-rank adaptation style composition
+            self.attn_W_down = nn.Linear(self.config.model_dim, self.config.rank)
+            self.attn_W_up = nn.Linear(self.config.rank, self.config.model_dim)
+    
+    def _init_normalization(self):
+        """Initialize normalization components"""
+        self.layer_norm = nn.LayerNorm(self.config.model_dim)
+    
+    def forward(self, inputs_embeds, src_prompts, source_idx=None, 
+                target_idx=None, task_ids=None, task=""):
+        # Input processing
+        processed_inputs = self._process_inputs(inputs_embeds)
+        
+        # Prompt selection and attention
+        attn_scores, attend_to = self._compute_attention(
+            processed_inputs, src_prompts, source_idx, target_idx, task_ids)
+        
+        # Prompt composition
+        composed_prompts = self._compose_prompts(
+            attn_scores, attend_to, src_prompts)
+        
+        return composed_prompts, attn_scores, source_idx
+    
+    def _process_inputs(self, inputs_embeds):
+        """Process input embeddings for attention computation"""
+        if self.config.attend_input:
+            pool = nn.AdaptiveMaxPool1d(self.config.src_prompt_dim)
+            return pool(inputs_embeds.permute(0,2,1)).permute(0,2,1)
+        return None
+    
+    def _compute_attention(self, processed_inputs, src_prompts, 
+                          source_idx, target_idx, task_ids):
+        """Compute attention scores between prompts and inputs"""
+        batch_size = src_prompts.size(0)
+        
+        if self.config.attn_method == "const":
+            return self._constant_attention(batch_size, target_idx, source_idx)
+        
+        elif self.config.attn_method == "gated":
+            # MoE-style gating
+            query = processed_inputs.mean(dim=1) if processed_inputs is not None else src_prompts.mean(dim=(1,2))
+            return self.gate(query).unsqueeze(1), src_prompts
+        
+        elif self.config.attn_method == "cross_attn":
+            # Cross-attention between input and prompts
+            return self._cross_attention(processed_inputs, src_prompts)
+        
+        elif self.config.attn_method == "rb":
+            return self._routing_attention(batch_size, target_idx, source_idx)
+        
+        else:
+            raise ValueError(f"Unknown attention method: {self.config.attn_method}")
+    
+    def _compose_prompts(self, attn_scores, attend_to, src_prompts):
+        """Compose final prompts using selected method"""
+        method = self.config.compose_method
+        
+        if method in ["wavg", "mwavg"]:
+            return self._weighted_average(attn_scores, attend_to)
+        
+        elif method in ["wsp", "wmp", "wcp"]:
+            return self._weighted_operation(
+                attn_scores, attend_to, src_prompts, 
+                op=method.replace("w", ""))
+        
+        elif method in ["pool", "mpool"]:
+            return self._pooling_composition(attend_to, method)
+        
+        elif method == "lin":
+            return self._linear_composition(attend_to)
+        
+        elif method == "sub":
+            return self._lowrank_composition(attend_to)
+        
+        else:
+            raise ValueError(f"Unknown composition method: {method}")
+    
+    # --- Composition Methods ---
+    def _weighted_average(self, attn_scores, attend_to):
+        """Standard weighted average composition"""
+        return torch.einsum('bts,btsld->btld', attn_scores, attend_to)
+    
+    def _weighted_operation(self, attn_scores, attend_to, src_prompts, op):
+        """Weighted operations (sum/mul/concat) with private prompt"""
+        base = torch.einsum('bts,btsld->btld', 
+                          attn_scores[:,:,:-1], 
+                          attend_to[:,:,:-1])
+        private = src_prompts[:,-1].unsqueeze(1)
+        
+        if op == "sp":  # weighted sum
+            return base + private
+        elif op == "mp":  # weighted multiply
+            return base * private
+        elif op == "cp":  # weighted concat
+            return torch.cat([base, private], dim=2)
+    
+    def _pooling_composition(self, attend_to, method):
+        """Pooling-based composition (avg or max)"""
+        pool = nn.AdaptiveMaxPool1d(1) if "mpool" in method else nn.AdaptiveAvgPool1d(1)
+        x = attend_to.flatten(start_dim=3).permute(0,1,3,2)
+        return pool(x).squeeze(-1).view_as(attend_to[:,:,:1])
+    
+    def _linear_composition(self, attend_to):
+        """Neural network-based composition"""
+        x = attend_to.flatten(start_dim=2)
+        return self.comp_linear(x).view(
+            attend_to.size(0), attend_to.size(1), -1, self.config.model_dim)
+    
+    def _lowrank_composition(self, attend_to):
+        """Low-rank adaptation style composition"""
+        x = self.attn_W_down(attend_to)
+        return self.attn_W_up(x)
+    
+    # --- Attention Variants ---
+    def _constant_attention(self, batch_size, target_idx, source_idx):
+        """Fixed uniform attention"""
+        router = torch.ones(target_idx.size()[1], source_idx.size()[1], 
+                          device=target_idx.device)
+        return router.repeat(batch_size, 1, 1), None
+    
+    def _routing_attention(self, batch_size, target_idx, source_idx):
+        """Routing-based attention"""
+        router = torch.zeros(target_idx.size(1), source_idx.size(1),
+                           device=target_idx.device)
+        router = router.repeat(batch_size, 1, 1)
+        
+        for i in range(batch_size):
+            router[i] = self.router[target_idx[i].reshape(-1,1), 
+                                  source_idx[i]]
+        
+        if self.training:
+            return RelaxedBernoulli(logits=router).rsample(), None
+        return router, None
+    
+    def _cross_attention(self, processed_inputs, src_prompts):
+        """Cross-attention between inputs and prompts"""
+        # Use first prompt token as query
+        queries = src_prompts[:,:,0]
+        keys = processed_inputs if processed_inputs is not None else src_prompts
+        
+        # Scaled dot-product attention
+        scores = torch.einsum('btd,bsd->bts', queries, keys) / math.sqrt(queries.size(-1))
+        return torch.softmax(scores, dim=-1), src_prompts
+
+
 class AnnealLambda:
     def __init__(self, module, lambda_start=0.0, lambda_max=0.1, warmup_steps=5000, target_entropy=0.5, entropy_tolerance=0.1):
         self.module = module
@@ -371,12 +545,14 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.attn_tuning = attn_tuning
         self.mul_prefix_emb = mul_prefix_emb
         self.attn_method = config.attn_method
+        self.use_composer = config.use_composer
         self.model_dim = model_dim
         self.out_dim = config.prompt_out_dim if config.prompt_out_dim > 0 else model_dim
         self.shared_attn = shared_attn
         self.learned_temperature = learned_temperature
         self.target_task_id = None
         self.task_names = None
+        self.composer = None
         if self.learned_temperature is True:
             # The code causes error; need to fix a bug.
             # RuntimeError: Trying to backward through the graph a second time (or directly access saved variables after they have already been freed). Saved intermediate values of the graph are freed when you call .backward() or autograd.grad(). Specify retain_graph=True if you need to backward through the graph a second time or if you need to access saved variables after calling backward
@@ -490,7 +666,14 @@ class AttentivePromptEncoder(torch.nn.Module):
                     i += 1
                 mylogs.bp("bias")
             self.router = nn.Parameter(data=router, requires_grad=True)
-
+        comp_config = {
+            "attn_method": self.attn_method,  # or "cross_attn", "rb", "const"
+            "compose_method": self.compose_method,  # or "wmp", "wcp", "pool", etc.
+            "model_dim": self.model_dim,
+            "num_sources": self.num_source_encoders
+            "num_tasks": len(tasks) 
+        }
+        self.composer = PromptComposer(comp_config)
         self.attn_mask_orig = self.attn_mask.clone()
         self.source_encoders_idx = torch.tensor(src_list, device=device)
         self.target_encoders_idx = torch.tensor(tgt_list, device=device)
@@ -1450,14 +1633,23 @@ class AttentivePromptEncoder(torch.nn.Module):
                         #    source_idx = torch.cat([source_idx, target_idx], dim=1)
                         mylogs.bp("fwdatt")
                         if source_idx.size(1) > 1 or self.attend_input:
-                            soft_prompts, attn_scores, attend_to_idx = self.attend_prompts(
-                                inputs_embeds, 
-                                src_prompts = sel_prompts, 
-                                source_idx=source_idx, 
-                                target_idx=target_idx, 
-                                task_ids = tids,
-                                attn_mat = attn_mat,
-                                task=task)
+                            if self.use_composer:
+                                soft_prompts, attn_scores, attend_to_idx = composer(
+                                    inputs_embeds,
+                                    src_prompts = sel_prompts,
+                                    source_idx=source_idx,
+                                    target_idx=target_idx,
+                                    task=task,
+                                )
+                            else:
+                                soft_prompts, attn_scores, attend_to_idx = self.attend_prompts(
+                                    inputs_embeds, 
+                                    src_prompts = sel_prompts, 
+                                    source_idx=source_idx, 
+                                    target_idx=target_idx, 
+                                    task_ids = tids,
+                                    attn_mat = attn_mat,
+                                    task=task)
                             if self.add_target:
                                 target_prompts = target_prompts.view(batch_size,
                                     -1, self.prompt_dim, self.out_dim)

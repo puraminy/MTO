@@ -48,6 +48,7 @@
   "lamb":"lambda_entropy",
   "ent":"do_entropy_loss",
   "cont":"do_cont_loss",
+  "ucm":"use_composer",
   "cmm":"compose_method",
   "cmt":"compose_target",
   "gcmm":"gen_compose_method",

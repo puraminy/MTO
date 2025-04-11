@@ -1727,6 +1727,7 @@ def train(**kwargs):
     config.attn_method = model_args.attn_method
     compose_method = model_args.compose_method #my option
     config.compose_method = compose_method 
+    config.use_composer = kwargs.get("use_composer", False)
     compose_target = kwargs.get("compse_target", None)
     if compose_target is None:
         compose_target = "prod" if compose_method in ["mwavg","mcat"] else "sum"
@@ -3548,7 +3549,7 @@ def train(**kwargs):
                             task_scores[rm][test_key] = {}
                         if not test_key in pred_counts[rm]:
                             pred_counts[rm][test_key] = {}
-                        if method == "pt" or cross_pt:
+                        if cross_pt:
                             targets = attn_pt.target_encoders_idx
                             y_labels = [attn_pt.prompt_names[i] for i in targets]
                             y_labels = [y.replace("tar-","") for y in y_labels]
@@ -3642,7 +3643,7 @@ def train(**kwargs):
                         if mask is None:
                             full_attn_mat = attn_pt.attn_scores
                         mean_score = total_score / counter
-                        if method == "pt" or cross_pt:
+                        if cross_pt:
                             targets = attn_pt.target_encoders_idx
                             router_scores = attn_pt.router.index_select(0, targets)
                             tlen = router_scores.size(0)
