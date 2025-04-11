@@ -1042,26 +1042,25 @@ class AbstractTask(abc.ABC):
         mylogs.bp("format")
         mylogs.bp(self.split + "frm")
         choice_list = []
-
-        if (self.map_labels and self.mapping in self.labels_map
-                and self.labels_map[self.mapping]):
+        if (self.mapping in self.labels_map and self.labels_map[self.mapping]):
             labels_list = []
             for label in self.labels_list:
                 mapped_label = self.labels_map[self.mapping][label]
                 labels_list.append(mapped_label)
                 choice_list.append(label + ":" + mapped_label) 
 
-            tt = []
-            for label in targets:
-                assert label in self.labels_map[self.mapping], self.name + ":" + label \
-                    + ":" + str(self.labels_map)
-                # tt.append("<" + self.labels_map[label] + ">")
-                ans = self.labels_map[self.mapping][label]
-                tt.append(ans.strip())
-            targets = tt
+            if self.map_labels:
+                tt = []
+                for label in targets:
+                    assert label in self.labels_map[self.mapping], self.name + ":" + label \
+                        + ":" + str(self.labels_map)
+                    # tt.append("<" + self.labels_map[label] + ">")
+                    ans = self.labels_map[self.mapping][label]
+                    tt.append(ans.strip())
+                targets = tt
         else:
             labels_list = self.labels_list
-            choice_list = self.label_list
+            choice_list = self.labels_list
 
         try:
             orig_src = ' '.join(sources)
