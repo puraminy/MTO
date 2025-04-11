@@ -670,7 +670,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             "attn_method": self.attn_method,  # or "cross_attn", "rb", "const"
             "compose_method": self.compose_method,  # or "wmp", "wcp", "pool", etc.
             "model_dim": self.model_dim,
-            "num_sources": self.num_source_encoders
+            "num_sources": self.num_source_encoders,
             "num_tasks": len(tasks) 
         }
         self.composer = PromptComposer(comp_config)
