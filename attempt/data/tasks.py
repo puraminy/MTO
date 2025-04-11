@@ -1041,11 +1041,15 @@ class AbstractTask(abc.ABC):
         src_prefix += ":"
         mylogs.bp("format")
         mylogs.bp(self.split + "frm")
+        choice_list = []
+
         if (self.map_labels and self.mapping in self.labels_map
                 and self.labels_map[self.mapping]):
             labels_list = []
             for label in self.labels_list:
-                labels_list.append(self.labels_map[self.mapping][label])
+                mapped_label = self.labels_map[self.mapping][label]
+                labels_list.append(mapped_label)
+                choice_list.append(label + ":" + mapped_label) 
 
             tt = []
             for label in targets:
@@ -1057,6 +1061,7 @@ class AbstractTask(abc.ABC):
             targets = tt
         else:
             labels_list = self.labels_list
+            choice_list = self.label_list
 
         try:
             orig_src = ' '.join(sources)
@@ -1072,10 +1077,10 @@ class AbstractTask(abc.ABC):
         max_input_len = 511 - len(tgt) - prompt_len
         if self.multi_choice:
             max_input_len -= 9  # for options tag
-            max_input_len -= sum([len(l) + 1 for l in labels_list])
+            max_input_len -= sum([len(l) + 1 for l in choice_list])
 
         if self.multi_choice:
-            src = src + " options:" + ",".join(labels_list)
+            src = src + " options:" + ",".join(choice_list)
 
         src = src[:max_input_len]
         group = None if not "group" in extra_fields else extra_fields["group"]
