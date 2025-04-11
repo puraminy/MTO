@@ -670,10 +670,11 @@ class AttentivePromptEncoder(torch.nn.Module):
             "attn_method": self.attn_method,  # or "cross_attn", "rb", "const"
             "compose_method": self.compose_method,  # or "wmp", "wcp", "pool", etc.
             "model_dim": self.model_dim,
-            "num_sources": self.num_source_encoders,
+            "num_sources": self.num_src_encoders,
             "num_tasks": len(tasks) 
         }
-        self.composer = PromptComposer(comp_config)
+        if self.use_composer is True:
+            self.composer = PromptComposer(comp_config)
         self.attn_mask_orig = self.attn_mask.clone()
         self.source_encoders_idx = torch.tensor(src_list, device=device)
         self.target_encoders_idx = torch.tensor(tgt_list, device=device)
