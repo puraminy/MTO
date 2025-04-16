@@ -1,0 +1,4 @@
+retrain ssum -to ff21 --tn=32 --t=@glue --temp=0-ptar-unsup --seqt=True --tmpr=5 --adir=-1 --nsp=0 --pconf=SILP --ppx=bart01#bart --vlr=0.1 --alr=0.05 --model=bart-base --ep=15 --mt=apt
+
+retrain PT -to mm15 --t=#glue --mt=pt --prompts=True --ppx=lm320npx --model=t5-lm --temp=0-pt --ml=True --enctype=mlp --tn=32 --ep=12 --addp=False --numt=5#10#20
+

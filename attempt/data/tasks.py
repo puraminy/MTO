@@ -1509,6 +1509,7 @@ class MRPC2(MRPC):
     split_folder = {"train": "mrpc", "test":"mrpc"}
     labels_map = {
             "map2": {"0":"not_equivalent","1":"equivalent"},
+            "np": {"0":"negative","1":"positive"},
             "map": {"0":"not_duplicate","1":"duplicate"}
         }
 

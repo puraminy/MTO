@@ -86,7 +86,6 @@ class PromptEncoder(torch.nn.Module):
 
     def get_filename(self, length=None, prefix="", as_saved=False, name=""):
         if not name: name = self.load_name if self.load_name else self.name
-        self.enc_type = "rmlp"
         length = length if length is not None else self.length
         if as_saved: 
             fname= (prefix + "_" if prefix else "") + \
@@ -510,7 +509,6 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 non_linear = _enc_type[3]
 
         # assert False, str(num_layers) + "-" + str(hidden_size) + "-" + str(non_linear)
-        encoder_type = "rmlp" #TODO remove it
         if encoder_type == "mlp_res" or encoder_type == "rmlp":
             prompt_encoder = ResidualMLPPromptEncoder(name = name,
                 model=model, tokenizer=tokenizer,

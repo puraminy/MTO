@@ -1378,12 +1378,15 @@ def show_df(df, summary=False):
         return None 
 
 
-    def get_sel_rows(df, row_id="eid", col="eid", from_main=True):
+    def get_sel_rows(df, row_id="eid", col="eid", from_main=True, srow=None):
         values = []
         s_rows = sel_rows
         exprs = []
         if not s_rows:
-            s_rows = [sel_row]
+            if srow:
+                s_rows = [srow]
+            else:
+                s_rows = [sel_row]
         for s_row in s_rows:
             if row_id is None:
                 val=df.iloc[s_row][col]
@@ -1829,7 +1832,7 @@ def show_df(df, summary=False):
             consts["selected_cols"] = selected_cols
             cur_col += 1
             mbeep()
-        elif char in ["+"]:
+        elif char in ["+"] and False:
             col = sel_cols[cur_col]
             if col in score_cols:
                 score_cols.remove(col)
@@ -1855,6 +1858,31 @@ def show_df(df, summary=False):
                 consts["sel"] += " " + col + "='" + str(val) + "'"
             else:
                 consts["sel"] = col + "='" + str(val) + "'"
+        elif char == "+":
+            col = "expid" #sel_cols[cur_col]
+            val=df.iloc[sel_row][col]
+            if col == "fid": col = FID
+            if "filter" in consts:
+                consts["filter"] += " " + col + "='" + str(val) + "'"
+            else:
+                consts["filter"] = col + "='" + str(val) + "'"
+            # cur_df = back.pop()
+            backit(df,sel_cols)
+            df = pdf # cur_df.df
+            df_conds.append((col, df[col] == val))
+            df_conds.sort(key=lambda tup: tup[0])
+            df_cond = True
+            prev_col = -1
+            for col, cond in df_conds:
+               if col == prev_col: 
+                   df_cond = df_cond | cond
+               else:
+                   df_cond = df_cond & cond
+               prev_col = col
+            df = df[df_cond]
+            df_conds = [] 
+            group_col = ""
+            keep_uniques = False
         elif char == "=":
             col = sel_cols[cur_col]
             val=df.iloc[sel_row][col]
@@ -1924,13 +1952,14 @@ def show_df(df, summary=False):
             tdf = df #pivot_df if pivot_df is not None and context == "pivot" else df
             images = []
             exprs, _ = get_sel_rows(tdf)
-            merge = "vert"
+            merge = "horiz"
             image_keys = "" 
             if char == "o" and "images" in settings:
                 image_keys = settings["images"].split("@")
+                image_keys = ["router", "sim"]
             elif char == "y":
-                image_keys = ["effect", "score"]
-                merge = "vert"
+                image_keys = ["effect", "score","router"]
+                merge = "horiz"
             elif char == "k" or char == "p":
                 image_keys = ["score","sim"]
                 merge = "horiz"
@@ -2639,7 +2668,7 @@ def show_df(df, summary=False):
             Path(comp_path).mkdir(parents=True, exist_ok=True)
             if char in ["U", "Y"]:
                 if dest_folder and Path(comp_path).exists():
-                    shutil.rmtree(comp_path)
+                    # shutil.rmtree(comp_path)
                     cmd = f"sshpass -p 'a' ssh -t ahmad@10.42.0.210 'rm /home/ahmad/temp/{dest_folder}/*'"
                     os.system(cmd)
                 cmd = f"sshpass -p 'a' ssh -t ahmad@10.42.0.210 'mkdir -p /home/ahmad/temp/{dest_folder}'"
@@ -2658,6 +2687,7 @@ def show_df(df, summary=False):
                 tdf = main_df[main_df.eid == exp]
                 prefix=tdf.iloc[0]["expname"]
                 expid=tdf.iloc[0]["expid"]
+                expid = expid.split("_")[0]
                 # path=tdf.iloc[0]["output_dir"]
                 rpath=tdf.iloc[0]["folder"]
                 print(rpath, file=adr)
@@ -2683,12 +2713,20 @@ def show_df(df, summary=False):
                     if char in ["U","Y"]:
                         dest = os.path.join(comp_path, "exp_" + str(prefix) + ".json")
                     elif "conf" in fname:
-                        dest = os.path.join(home, "confs", fname)
+                        dest = os.path.join(home, "MTO", "confs", fname)
                     elif "reval" in fname:
                         dest = os.path.join(home, "reval", fname)
-                    else:
+                    if "png" in fname:
+                        target = os.path.join(home, "MTO", "figs", expid)
+                        target_dir = Path(target)
+                        target_dir.mkdir(parents=True, exist_ok=True)
+                        for png_file in Path(rpath).rglob('*.png'):
+                            target_path = target_dir / png_file.name
+                            shutil.copy2(png_file, target_path)
+                        shutil.copy2(js, target_dir)
+                    if "all" in fname:
                         folders = glob(os.path.join(str(parent), "Eval-"+ str(expid) + "*"))
-                        results_folder = os.path.join(home,"results",
+                        results_folder = os.path.join(home,"MTO","results",
                                 fname.replace(".json",""))
                         for folder in folders:
                             try:
@@ -3310,9 +3348,13 @@ def show_df(df, summary=False):
             dfs = []
             if "prefix" in df:
                 pfx_cols = df["prefix"].unique()
+            elif selected_cols:
+                pfx_cols = len(df)*[selected_cols[0]]
+                indexes = list(range(len(df)))
             else:
                 pfx_cols = pcols
-            for prefix in pfx_cols:
+                indexes = [sel_row]*len(pfx_cols)
+            for ii, prefix in zip(indexes, pfx_cols):
                 if "prefix" in df:
                     _, scores = get_sel_rows(df, None, col="rouge_score", from_main=False) 
                     _, prefixes = get_sel_rows(df, None, col="prefix", from_main=False) 
@@ -3325,10 +3367,10 @@ def show_df(df, summary=False):
                         labels = ["x"] * len(exprs)
                 else:
                     # prefix = sel_cols[_cur_col]
-                    exprs, scores = get_sel_rows(df, col=prefix, from_main=False) 
+                    exprs, scores = get_sel_rows(df, col=prefix, from_main=False, srow=ii) 
                     prefixes = [prefix]*len(exprs)
                     if "mask_type" in df:
-                        _, mask_types = get_sel_rows(df, col="mask_type", from_main=False) 
+                        _, mask_types = get_sel_rows(df, col="mask_type", from_main=False, srow=ii) 
                     else:
                         mask_types = exprs.copy()
                     if "label" in df:
@@ -4913,17 +4955,22 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id):
         else:
             files = []
             matched_files = []
-            for root, dirs, _files in os.walk(dfpath):
-                for _file in _files:
-                    root_file = os.path.join(root,_file)
-                    cond = all(s.strip() in root_file for s in dfname)
-                    if check_time:
-                        ts = os.path.getctime(root_file)
-                        ctime = datetime.fromtimestamp(ts)
-                        last_hour = datetime.now() - timedelta(hours = 5)
-                        cond = cond and ctime > last_hour
-                    if dftype in _file and cond: 
-                        matched_files.append((os.path.getctime(root_file), root_file))
+            dfpath = os.path.abspath(dfpath)
+            dfpath = os.path.abspath(dfpath)
+            all_files = glob(os.path.join(dfpath, '**'), recursive=True)
+            all_files = [f for f in all_files if os.path.isfile(f)]
+            # for root, dirs, _files in os.walk(dfpath):
+            for root_file in all_files:
+                # root_file = os.path.join(root,_file)
+                _file = root_file.split("/")[-1]
+                cond = all(s.strip() in root_file for s in dfname)
+                if check_time:
+                    ts = os.path.getctime(root_file)
+                    ctime = datetime.fromtimestamp(ts)
+                    last_hour = datetime.now() - timedelta(hours = 5)
+                    cond = cond and ctime > last_hour
+                if dftype in _file and cond: 
+                    matched_files.append((os.path.getctime(root_file), root_file))
         matched_files.sort(reverse=True)
         if limit > 0:
             matched_files = matched_files[:limit]
@@ -5119,7 +5166,7 @@ def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, n
     if summary:
         hkey = hkey.replace("C","").replace("G","")
     global_summary = summary
-    check_time = not no_chk_time
+    check_time = False #not no_chk_time
     global_search = search
     root_path = path
     hotkey = hkey 

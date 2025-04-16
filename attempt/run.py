@@ -507,8 +507,8 @@ def cli():
     help="Merge experiments in one folder"
 )
 @click.option(
-    "--not_copy_prev_exp",
-    "-nc",
+    "--copy_prev_exp",
+    "-cp",
     is_flag=True,
     help="Don't copy the experiment of the source config to new experiment"
 )
@@ -569,7 +569,7 @@ def cli():
 def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars, 
         log_var, last_var, main_vars, 
         debug, version, trial, skip, save_conf, rem, repeat, 
-        label, deep_check, merge, not_copy_prev_exp, 
+        label, deep_check, merge, copy_prev_exp, 
         reval, test, use_wandb, download_model, max_exp, 
         new_exp_folder, copy_to, inp_log_path):
    if debug:
@@ -607,7 +607,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
             raise ValueError( f"Looking for *{cfg_pat}* {confs} were matched: " + exp_conf)
         prev_exp_folder = exp_args["output_dir"]
         prev_save_path = exp_args.get("save_path","")
-        not_copy_prev_exp = not_copy_prev_exp or exp_args.get("not_copy_prev_exp", False)
+        copy_prev_exp = copy_prev_exp or exp_args.get("copy_prev_exp", False)
         exp_conf_name = Path(exp_conf).stem
         exp_args["conf"] = exp_conf_name
         _expid = str(exp_args["expid"]).split("-")[-1] if "expid" in exp_args else "0"
@@ -695,7 +695,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    args["save_path"] = save_path
 
    args["new_exp_folder"] = new_exp_folder
-   args["not_copy_prev_exp"] = not_copy_prev_exp
+   args["copy_prev_exp"] = copy_prev_exp
    args["load_path"] = "" 
    args["label"] = label
    args["is_debug"] = debug
@@ -795,7 +795,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    mylogs.bp("prev")
    if prev_exp_folder and not "prompts_prefix" in main_vars:
        args["prompt_encoders_dir"] = prev_exp_folder
-   if prev_exp_folder and not "task_name" in main_vars and not not_copy_prev_exp and not repeat:
+   if prev_exp_folder and not "task_name" in main_vars and copy_prev_exp and not repeat:
        prev_folder = Path(prev_exp_folder)
        prev_exp_id = prev_folder.name
        eval_folders = glob.glob(
@@ -1411,7 +1411,10 @@ def train(**kwargs):
         rel_sh = REL_TO_SHARED_TOKENS[task_name] if task_name in REL_TO_SHARED_TOKENS else task_name
         task_source_prompts_set[tid].extend(rel_sh.split())
 
-    add_or_attend_input = model_args.attend_input or kwargs.get("add_input", False)
+    add_or_attend_input = False
+    attn_method = model_args.attn_method
+    if model_args.attend_input or kwargs.get("add_input", False): # or attn_method == "gated":
+        add_or_attend_input = True
     nsp = 0
     inp_nsp = kwargs.setdefault("num_source_prompts", nsp) 
     source_per_task = kwargs.setdefault("source_per_task", False) 
@@ -1748,7 +1751,7 @@ def train(**kwargs):
     config.padding_pos = kwargs.setdefault("padding_pos", "start")
     config.attend_for = kwargs.setdefault("attend_for", "inp_target")
     config.use_source_prompts = kwargs.setdefault("use_source_prompts", True)
-    config.attend_input = model_args.attend_input #my option
+    config.attend_input = add_or_attend_input
     config.add_input = kwargs.setdefault("add_input", False)
     config.route_method = model_args.route_method #my option
     config.normalize = kwargs.setdefault("normalize", True)
@@ -2011,7 +2014,6 @@ def train(**kwargs):
             encoder_type = adapter_args.prompt_encoder_type
             if "_for" in encoder_name:
                 encoder_type = kwargs.get("private_prompt_encoder_type", encoder_type)
-                encoder_type = "rmlp" #TODO remove it encoder_type 
             encoder, enc_type = create_encoder(encoder_name, model, tokenizer, 
                     prompt_tokens=[],
                     non_linear = prompt_non_linear,
@@ -2502,7 +2504,7 @@ def train(**kwargs):
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
         if attn_pt is not None:
             for name, param in attn_pt.named_parameters():
-               if name == "router": 
+               if name == "router" or "proj" in name: 
                   attn_params.append(param)
         for name, param in model.named_parameters():
             if (name == "encoder.attn_W_up.weight" 
@@ -3323,7 +3325,7 @@ def train(**kwargs):
                     x_labels=x_labels,
                     mask_zeros = mask_zeros,
                     #title = title,
-                    title = prompts_conf if prompts_conf else spec + " (" + str(num_source_prompts) + ")" # + ("| remove" if "rem" in title else "")
+                    title = prompts_conf + "|" + spec if prompts_conf else spec + " (" + str(num_source_prompts) + ")" # + ("| remove" if "rem" in title else "")
                             #title  
                             #+ " | " + str(kwargs.gen_norm_method) \
                             #+ " | " + str(kwargs.gen_thresh_min) \
