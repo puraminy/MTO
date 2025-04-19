@@ -2007,7 +2007,7 @@ def train(**kwargs):
 
         prompt_num_layers = kwargs.get("num_layers",1)
         prompt_hidden_size = kwargs.get("hidden_size", -1)
-        prompt_non_linear = kwargs.get("non_linear", "relu")
+        prompt_non_linear = kwargs.get("non_linear", "gelu")
         prompt_out_dim = kwargs.get("out_dim", -1)
         for prompt in source_prompts: 
             encoder_name = prompt
