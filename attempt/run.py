@@ -1208,7 +1208,7 @@ def train(**kwargs):
 
     new_exp_folder = kwargs.get("new_exp_folder","")
     prompts_conf = kwargs.get("prompts_conf", None)
-    if prompts_conf in ["SLP","SL"]:
+    if False: #prompts_conf in ["SLP","SL"]:
         kwargs["num_train_epochs"] = int(kwargs["num_train_epochs"]) + 10
     if prompts_conf in ["SIL","SL"] and "compose_method" in kwargs and kwargs["compose_method"] == "wsp1":
         kwargs["compose_method"] = "wavg" 
