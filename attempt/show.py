@@ -3154,8 +3154,8 @@ def show_df(df, summary=False):
             save_obj(sel_cols, "sel_cols", context)
         elif ch == cur.KEY_DC and context == "notes":
             df = df.drop(df.iloc[sel_row].name)
-            doc_dir = "/home/ahmad/findings" #os.getcwd() 
-            note_file = os.path.join(doc_dir, "notes.csv")
+            doc_dir = file_dir # "/home/ahmad/findings" #os.getcwd() 
+            note_file = os.path.join(doc_dir, "notes", "notes.csv")
             df.to_csv(note_file, index=False)
         elif ch == cur.KEY_SDC:
             #col = sel_cols[cur_col]
@@ -4088,8 +4088,8 @@ def show_df(df, summary=False):
                 sort = sort_col
                 # df = df.sort_values(by=sort_col, ascending=False)
         if char == "!":
-            doc_dir = "/home/ahmad/findings" #os.getcwd() 
-            note_file = os.path.join(doc_dir, "notes.csv")
+            doc_dir =  file_dir # "/home/ahmad/findings" #os.getcwd() 
+            note_file = os.path.join(doc_dir, "notes", "notes.csv")
             context = "notes"
             if not "comment" in df:
                 backit(df, sel_cols)
@@ -4104,8 +4104,8 @@ def show_df(df, summary=False):
                 cond_colors["cat"] = cat_colors
                 # search_df = df
         if ch == cur.KEY_IC or char == "e" and context == "notes":
-            doc_dir = "/home/ahmad/findings" #os.getcwd() 
-            note_file = os.path.join(doc_dir, "notes.csv")
+            doc_dir = file_dir # "/home/ahmad/findings" #os.getcwd() 
+            note_file = os.path.join(doc_dir, "notes", "notes.csv")
             if not "comment" in df or context != "notes":
                 if Path(note_file).is_file():
                     tdf = pd.read_csv(note_file)
