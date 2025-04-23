@@ -646,6 +646,11 @@ def summarize(df, rep_cols=None, score_col=None, rename =True):
     #    pdf['label'] = pdf.apply(create_label, axis=1)
     #pdf['ref'] = pdf.apply(
     #        lambda row: f" \\ref{{{'fig:' + str(row['eid'])}}}", axis=1)
+    cols_to_drop = [
+    'add_target', 'use_source_prompts', 'load_source_prompts',
+    'learn_source_prompts', 'use_private_prompts', 'load_private_prompts'
+    ]
+    pdf = pdf.drop(columns=[col for col in cols_to_drop if col in df.columns])
     pdf = pdf.round(2)
     df = pdf.iloc[:-1]
     return df
@@ -1133,6 +1138,9 @@ def show_df(df, summary=False):
     #info_cols = load_obj("info_cols", context, [])
     all_cols = {}
     file_dir = Path(__file__).parent
+    doc_dir = file_dir # "/home/ahmad/findings" #os.getcwd() 
+    note_dir = os.path.join(doc_dir, "notes")
+    Path(note_dir).mkdir(exist_ok=True, parents=True)
     with open(os.path.join(file_dir, 'cols.json'),'r') as f:
         all_cols = json.load(f)
 
@@ -1841,7 +1849,7 @@ def show_df(df, summary=False):
             consts["score_cols"] = score_cols 
             cur_col += 1
             mbeep()
-        elif char == "-":
+        elif char == "-" and False:
             backit(df, sel_cols)
             col = sel_cols[cur_col]
             val=df.iloc[sel_row][col]
@@ -1883,6 +1891,19 @@ def show_df(df, summary=False):
             df_conds = [] 
             group_col = ""
             keep_uniques = False
+        elif char == "-":
+            backit(df, sel_cols)
+            col_to_ignore = sel_cols[cur_col]
+            row_values = df.iloc[sel_row]
+            ignore_cols = [col_to_ignore]  + pcols + ["time", "All","exp","expid","eid"]  
+            # Create mask: rows identical in all non-ignored columns
+            #check_cols=[col for col in sel_cols if col not in ignore_cols and col in main_vars]
+            check_cols = [col for col in sel_cols if col not in ignore_cols]
+            cond = True
+            for col in check_cols:
+                cond = cond & (df[col] == row_values[col])
+
+            df = df[cond]
         elif char == "=":
             col = sel_cols[cur_col]
             val=df.iloc[sel_row][col]
@@ -2365,7 +2386,7 @@ def show_df(df, summary=False):
                 cond_colors["mean"] = score_colors
             selected_cols = []
             left = 0
-        elif char in ["g", "u"]:
+        elif char in ["g"]: #, "u"]:
             context = "group_mode"
             if cur_col < len(sel_cols):
                 col = sel_cols[cur_col]
@@ -2414,7 +2435,7 @@ def show_df(df, summary=False):
             elif "avg" in df:
                 df = df.sort_values(by=["avg"], ascending=False)
                 sort = "avg"
-        elif char == "u": # and False:
+        elif char == "u" and False:
             infos = calc_metrics(main_df)
             subwin(infos)
         elif char == "U" and prev_char == "x": 
@@ -2509,7 +2530,7 @@ def show_df(df, summary=False):
             exprs, _ = get_sel_rows(df)
             sel_rows = []
             df = df[df['eid'].isin(exprs)]
-        elif char == "z" and prev_char == "a": 
+        elif char == "u":
             if len(df) > 1:
                 sel_cols, info_cols, tag_cols = remove_uniques(df, sel_cols, 
                         orig_tag_cols, keep_cols)
@@ -2653,12 +2674,12 @@ def show_df(df, summary=False):
             df.drop(df.index[irange], inplace=True)
             sel_rows = []
             #df = df.loc[np.isin(np.arange(len(df)), irange)]
-        elif char == "T" or char == "U" or char == "Y":
+        elif char == "U" or char == "Y":
             s_rows = sel_rows
             if not sel_rows:
                 s_rows = [sel_row]
             pfix = ""
-            ignore_fname = False if char == "T" else True
+            ignore_fname = False if char == "U" else True
             dest_folder = "comp"
             if char == "Y":
                 # dest_folder = rowinput("Dest:")
@@ -2666,7 +2687,7 @@ def show_df(df, summary=False):
             temp_path = "/home/ahmad/temp/"
             comp_path = temp_path + dest_folder
             Path(comp_path).mkdir(parents=True, exist_ok=True)
-            if char in ["U", "Y"]:
+            if char in ["Y"]:
                 if dest_folder and Path(comp_path).exists():
                     # shutil.rmtree(comp_path)
                     cmd = f"sshpass -p 'a' ssh -t ahmad@10.42.0.210 'rm /home/ahmad/temp/{dest_folder}/*'"
@@ -2739,14 +2760,14 @@ def show_df(df, summary=False):
                         shutil.copyfile(js, dest)
                         correct_path(js, dest, path)
                         mbeep()
-                        if char in ["U", "Y"]:
+                        if char in ["Y"]:
                             to = "ahmad@10.42.0.210:" + dest 
                             cmd = f'sshpass -p "a" rsync -P -ae "ssh" -zarv "{js}" "{to}"'
                             # cmd = f"sshpass -p 'a' ssh -t ahmad@10.42.0.210 'cp {js} {dest}"
                             os.system(cmd)
                     # subprocess.run(cmd.split())
             adr.close()
-            if char in ["U", "Y"]:
+            if char in ["Y"]:
                 to = "ahmad@10.42.0.210:" + temp_path 
                 cmd = f'sshpass -p "a" rsync -P -ae "ssh" -zarv "{adrfile}" "{to}"'
                 os.system(cmd)
@@ -3073,15 +3094,15 @@ def show_df(df, summary=False):
            group_col = ""
            keep_uniques = False
         elif is_enter(ch) or char in ["f", "F"]:
-            if (is_enter(ch) or char == "f") and is_filtered:
-               df = back_df
+            if (is_enter(ch) or char == "f"): # and is_filtered:
+               df = pdf # back_df
             else:
-                backit(df, sel_cols)
-                cond_set = {}
+               backit(df, sel_cols)
+               cond_set = {}
             is_filtered = True
             col = sel_cols[cur_col]
             if col == "fid": col = FID
-            canceled, col, val = list_df_values(df, col, get_val=True)
+            canceled, col, val = list_df_values(pdf, col, get_val=True)
             if not canceled:
                if type(val) == str:
                   if not col in cond_set or is_enter(ch):
@@ -3106,10 +3127,10 @@ def show_df(df, summary=False):
                   extra["filter"] = []
                extra["filter"].append(cond)
                sel_row = 0
-               keep_cols.append(col)
-            if len(df) > 1:
-                sel_cols, info_cols_back, tag_cols = remove_uniques(df, sel_cols, 
-                        keep_cols=keep_cols + pivot_cols + info_cols + pcols)
+            #   keep_cols.append(col)
+            #if len(df) > 1:
+            #    sel_cols, info_cols_back, tag_cols = remove_uniques(df, sel_cols, 
+            #            keep_cols=keep_cols + pivot_cols + info_cols + pcols)
         if char == "V":
             start = sel_rows[-1] if sel_rows else 0
             end = sel_row if sel_rows else len(df) - 1
@@ -3342,14 +3363,14 @@ def show_df(df, summary=False):
            df = pd.concat(dfs, ignore_index=True)
            sel_cols = df.columns
            group_col = "prefix"
-        if cmd.startswith("cross") or char == "t":
+        if cmd.startswith("cross") or char == "t" or char == "T":
             backit(df, sel_cols)
             eid = df.iloc[sel_row]['eid'] 
             dfs = []
             if "prefix" in df:
                 pfx_cols = df["prefix"].unique()
-            elif selected_cols:
-                pfx_cols = len(df)*[selected_cols[0]]
+            elif selected_cols or char == "T":
+                pfx_cols = len(df)*[selected_cols[0] if selected_cols else sel_cols[cur_col]]
                 indexes = list(range(len(df)))
             else:
                 pfx_cols = pcols
@@ -4138,7 +4159,7 @@ def show_df(df, summary=False):
                 else:
                     tdf.iloc[sel_row] = new_note 
                 if Path(note_file).is_file():
-                    shutil.copyfile(note_file, note_file.replace("notes", now + "_notes"))
+                    shutil.copyfile(note_file,note_file.replace("notes.csv", now + "_notes.csv"))
                 tdf.to_csv(note_file)
             if "comment" in df:
                 df = tdf

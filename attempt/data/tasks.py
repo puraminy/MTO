@@ -154,6 +154,7 @@ class AbstractTask(abc.ABC):
         self.omit = task_args.get("omit_part",self.omit)
         self.qpos = task_args.get("qpos",self.qpos)
         self.chpos = task_args.get("chpos",self.chpos)
+        self.full_prefix = task_args.get("full_prefix", False)
         self.len_thresh = task_args.get("len_thresh", self.len_thresh)
         prefix = self.prefix if self.prefix else self.name
         self.prefix = task_args.get("prefix", prefix)
@@ -1000,7 +1001,7 @@ class AbstractTask(abc.ABC):
 
         # data["mask"] = mask
         data["end"] = "</s>"
-        data["prefix"] = self.name + ":"
+        data["prefix"] = "task:" + self.name + ":" if self.full_prefix else self.name.upper()+":"
         data = defdict(data)
         # fill the templates with data
 
@@ -2973,6 +2974,19 @@ TASK_MAPPING = OrderedDict(
 
 
 class AutoTask:
+    @classmethod
+    def get_task_name(self, task):
+        if task in TASK_MAPPING:
+            task_class = TASK_MAPPING[task]
+            return task_class.task_name if hasattr(task_class, "task_name") else task_class.name
+        else:
+            raise ValueError(
+            "Unrecognized task {} for AutoTask Model.\n" +
+            "Task name should be one of {}.".format(task,
+                                        ", ".join(c for c in TASK_MAPPING.keys())
+            )
+        )
+
     @classmethod
     def get(self, task, config, task_args=None, tokenizer=None):
         if task in TASK_MAPPING:

@@ -380,6 +380,15 @@ def normalize_scores(scores, method="soft",
     elif method == "spos":
         scores = F.softmax(scores, -1)
         scores[scores > 0.3] = 1
+    elif method == "soft_pos":
+        mask = (scores > 0).float()
+        masked_scores = scores.masked_fill(mask < -1, -200)
+        if is_training:
+            #scores=scores / scores.sum(dim=-1, keepdim=True) 
+            # Add a small positive constant to the scores
+            epsilon = 1e-8  # Adjust the value of epsilon as needed
+            masked_scores += epsilon
+        scores = F.softmax(masked_scores, -1)
     elif method == "sigmoid_relu":
         ret_scores = torch.sigmoid(scores)  
         ret_scores[scores <= 0] = 0
@@ -397,8 +406,6 @@ def normalize_scores(scores, method="soft",
         _min, _ = torch.min(scores, dim=-1, keepdim=True)
         _max, _ = torch.max(scores, dim=-1, keepdim=True)
         scores = (scores - _min) / (_max - _min)
-    
-
     return scores
 
 def batched_topk(batch_size, scores, num_attend_to, sorted=False, threshold=None):
@@ -446,7 +453,7 @@ class AttnConfig:
 
 # === Custom Attentive Prompt Embedding === #
 class AttentivePromptEncoder(torch.nn.Module):
-    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, attn_method="rb", shared_attn=False, attend_target=False, learned_temperature=False):
+    def __init__(self, config, adapter_config=None, embed_tokens=None, prefix_emb=None, attn_tuning=False, mul_prefix_emb=None, shared_attn=False, attend_target=False, learned_temperature=False):
         super().__init__()
 
         self.embed_tokens = embed_tokens
@@ -473,6 +480,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.training = True
         self.pred_task = ""
         self.prompt_dim = None
+        self.soft_prompts = None
+        self.task_prompt = None
         self.gen_conf = None
         self.query_proj = nn.Linear(model_dim, model_dim)
         self.key_proj = nn.Linear(model_dim, model_dim)
@@ -494,6 +503,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.select_method = config.select_method
         self.target_share_temperature = config.target_share_temperature
         self.bias = config.bias
+        self.private_bias = config.private_bias
         self.anneal_min = config.anneal_min
         self.anneal_dir = config.anneal_dir
         self.anneal_rate = config.anneal_rate
@@ -1024,13 +1034,13 @@ class AttentivePromptEncoder(torch.nn.Module):
             query = self.query_proj(avg_inputs_embeds)  # [B, 1, D]
             key = self.key_proj(prompt_summary)       # [B, N, D]
               # Project query and key
-            attn_logits = (torch.matmul(query, key.transpose(-1, -2)) / math.sqrt(self.model_dim)) #self.temperature  # [B, 1, N]
+            attn_scores = (torch.matmul(query, key.transpose(-1, -2)) / math.sqrt(self.model_dim)) #self.temperature  # [B, 1, N]
             if "rb" in self.attn_method:
                 attn_scores = RelaxedBernoulli(temperature=self.temperature, 
                     logits=attn_logits).rsample()            
-            else:
+            elif False:
                 attn_weights = F.softmax(attn_logits, dim=-1)
-                attn_scores = attn_weights + router
+                attn_scores = attn_weights
         elif self.attn_method == "const":
             router = torch.ones(target_idx.size()[1],
                     route_idx.size()[1], 
@@ -1059,6 +1069,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             if self.training: # and self.learn_attention:
                 logits = router
                 mylogs.bp("rbsample")
+                route_method = "rb" #TODO fix this fixed assignment
                 if route_method == "rb":
                     attn_scores = RelaxedBernoulli(temperature=self.temperature, 
                         logits=logits).rsample()            
@@ -1073,8 +1084,6 @@ class AttentivePromptEncoder(torch.nn.Module):
                 elif route_method == "importance":
                     col_sums = torch.sum(router, dim=0)
                     attn_scores = rb_scores * col_sums
-                elif route_method == "soft":
-                    attn_scores = router
                 else:
                     raise ValueError("Not recognized route method:" + route_method)
             elif not self.training:
@@ -1092,6 +1101,11 @@ class AttentivePromptEncoder(torch.nn.Module):
 
             #z = torch.mm(self.z, self.A) 
             #soft_prompts = torch.matmul(router.unsqueeze(0), z).view(-1, self.model_dim).tile(batch_size, 1, 1)
+        if self.private_bias > 0:
+            assert self.use_private_prompts is True, "use private prompts must be enabled"
+            bias_ratio = self.private_bias
+            logit_bias = torch.log(torch.tensor(bias_ratio / (1 - bias_ratio))) 
+            attn_scores[:, :, -1] += logit_bias
 
         mylogs.bp("before")
         if self.training and "before" in self.norm_method and self.attn_method != "const":
@@ -1652,16 +1666,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                         #    source_idx = torch.cat([source_idx, target_idx], dim=1)
                         mylogs.bp("fwdatt")
                         if source_idx.size(1) > 1 or self.attend_input:
-                            if self.use_composer:
-                                soft_prompts, attn_scores, attend_to_idx = self.composer(
-                                    inputs_embeds,
-                                    src_prompts = sel_prompts,
-                                    source_idx=source_idx,
-                                    target_idx=target_idx,
-                                    task=task,
-                                )
-                            else:
-                                soft_prompts, attn_scores, attend_to_idx = self.attend_prompts(
+                            soft_prompts, attn_scores, attend_to_idx = self.attend_prompts(
                                     inputs_embeds, 
                                     src_prompts = sel_prompts, 
                                     source_idx=source_idx, 
@@ -1694,6 +1699,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                                 ascore = attn_scores[batch_size - 1]
                                 self.attn_scores[tgt_idx.reshape(-1,1), src_idx] = ascore 
                                 self.attn_mask_learned[tgt_idx.reshape(-1,1), src_idx] = 1 
+                                self.task_prompt= soft_prompts[0]
                             ###### Pad extra prompt tokens
                             # amask = amask.squeeze(1)
                             masked_prompts = soft_prompts
@@ -1800,7 +1806,7 @@ class PTModel(PeftModel):
         embedding_layer = self.nested_model.get_input_embeddings()
         inputs_embeds = embedding_layer(input_ids)
         mylogs.bp("fwd")
-        if self.encoder is not None:
+        if self.encoder is not None and self.training:
             input_ids, attention_mask, inputs_embeds = \
                     self.encoder.prompt_encoders_forward(
                         input_ids, inputs_embeds, 
@@ -2170,7 +2176,7 @@ class CustomModelWrapper(PreTrainedModel):
             inputs_embeds = embedding_layer(input_ids)
 
         # Apply prompt tuning if enabled
-        if self.encoder is not None:
+        if self.encoder is not None and self.training:
             input_ids, attention_mask, inputs_embeds = \
                 self.encoder.prompt_encoders_forward(
                     input_ids, inputs_embeds, att_mask=attention_mask

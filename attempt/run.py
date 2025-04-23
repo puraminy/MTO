@@ -309,6 +309,28 @@ def task_similarity(dif_ij, final_i, final_j, alpha=1.0):
 
     return similarity
 
+def get_task_sim(prompt_encoders, target_embs, model):
+    source_embs = {}
+    for enc in prompt_encoders:
+        if enc.is_source:
+            emb = enc(enc.net_inps)  # shape: [N, D] or [D]
+            if emb.dim() == 2:
+                emb = emb.mean(dim=0)
+            source_embs[enc.name] = emb
+
+    target_names = list(target_embs.keys())
+    source_names = list(source_embs.keys())
+
+    sim_matrix = torch.zeros(len(target_names), len(source_names))
+    for i, tname in enumerate(target_names):
+        for j, sname in enumerate(source_names):
+            t = target_embs[tname]
+            s = source_embs[sname]
+            sim = F.cosine_similarity(t.unsqueeze(0), s.unsqueeze(0)).item()
+            sim_matrix[i, j] = sim
+
+    return sim_matrix, source_names
+
 def cosine_similarity(A, B, N):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     portion_A = torch.tensor(A[:N]).to(device).detach().clone()
@@ -1418,9 +1440,13 @@ def train(**kwargs):
     nsp = 0
     inp_nsp = kwargs.setdefault("num_source_prompts", nsp) 
     source_per_task = kwargs.setdefault("source_per_task", False) 
+    real_task_names = []
+    for name in tasks:
+       real_task_name = AutoTask.get_task_name(name)
+       real_task_names.append(real_task_name)
     if source_per_task: # and inp_nsp == 0:
         nsp = len(tasks)
-        data_args.source_prompts = tasks # source are the same target tasks
+        data_args.source_prompts = real_task_names # source are the same target tasks
     elif use_source_set:
         nsp = max([len(s) for s in task_source_prompts_set.values()])
     elif data_args.source_prompts is not None:
@@ -1497,6 +1523,7 @@ def train(**kwargs):
     task_args["chpos"] = kwargs.get("chpos","start") # position of question
     task_args["len_thresh"] = kwargs.get("len_thresh", None) # position of question
     task_args["num_prompts"] = num_prompts 
+    task_args["full_prefix"] = kwargs.get("full_prefix",False) # position of question
     task_args["target_prompt_length"] = target_prompt_length 
     task_args["prompt_length"] = kwargs.setdefault("prompt_length", 
                                     adapter_args.num_prompt_tokens)
@@ -1756,6 +1783,7 @@ def train(**kwargs):
     config.route_method = model_args.route_method #my option
     config.normalize = kwargs.setdefault("normalize", True)
     config.bias = kwargs.setdefault("bias", None)
+    config.private_bias = kwargs.setdefault("private_bias", 0)
     config.add_target = add_target_prompt #my option
     config.random_source = kwargs.setdefault("random_source", 0)
     config.target_share = model_args.target_share #my option
@@ -2876,6 +2904,8 @@ def train(**kwargs):
 
     # Test
     mylogs.bp("do_test")
+    model.training = False
+    attn_pt.training = False
     reval = not training_args.do_train 
     if attn_pt is not None:
         slen = len([e for e in attn_pt.prompt_encoders if e.is_source and not e.is_private]) 
@@ -2953,7 +2983,7 @@ def train(**kwargs):
                 attention_mask = attention_mask.unsqueeze(0)
                 labels = labels.unsqueeze(0)
 
-            model.eval()
+            model.nested_model.eval()
 
             # Initialize accumulators for perplexity and depth rank
             total_log_likelihood = 0.0
@@ -3123,6 +3153,7 @@ def train(**kwargs):
         def evaluate_test(task, test_dataset, save_to, ds_name, auto_task, 
                 gen_conf = {}, use_cache=False):
             mylogs.bp("ttt")
+            gen_conf["task"] = task
             gen_kwargs = {
                     "num_beams":1,
                     "max_length":10,
@@ -3307,14 +3338,15 @@ def train(**kwargs):
             fname = "pred@" + title + "--" + mylogs.now + ".png"
             fpath = os.path.join(folder, fname)
             
-            x_labels = y_labels
-            if not square:
-                if p_labels: 
-                    x_labels = p_labels 
-            if add_or_attend_input:
-                x_labels.insert(0, "inp")
             img_list = []
             for key, scores in score_dict.items():
+                x_labels = y_labels
+                _square = square[key] if type(square) == dict else square
+                if not _square:
+                    if p_labels: 
+                        x_labels = p_labels 
+                if add_or_attend_input:
+                    x_labels.insert(0, "inp")
                 img_buf = WBCallback.save_image(
                     scores=scores,
                     cbar=False,
@@ -3486,6 +3518,7 @@ def train(**kwargs):
                 gen_mask_counter = 0
                 for gen_masks in gen_masks_list:
                     task_scores = {}
+                    task_tuned_prompts = {}
                     pred_counts = {}
                     effect_scores = {}
                     pred_scores = {}
@@ -3608,7 +3641,8 @@ def train(**kwargs):
 
                             df, scores, golds, preds = evaluate_test(task, test_dataset, 
                                     save_to, ds_name, auto_task, gen_conf, use_cache = use_cache)
-
+                            task_prompt = attn_pt.task_prompt  # shape [1, L, N]
+                            task_tuned_prompts[task] = task_prompt.squeeze(0).mean(dim=0)
                             if mask is None:
                                 no_mask_test_files[task] = save_to
 
@@ -3659,7 +3693,8 @@ def train(**kwargs):
                             vmin = 0 if tlen <=3 else None
                             if cross_pt:
                                 save_image(eval_folder, model, {"rsim":rsim}, 
-                                        annot=True, square=True, vmin=vmin, vmax=1,
+                                        annot=True, square=True,
+                                        vmin=vmin, vmax=1,
                                         title="rsim",
                                         spec = "rsim-" + norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
@@ -3712,10 +3747,14 @@ def train(**kwargs):
                             #if len(torch.nonzero(scores_matrix)) < 1:
                             #    start = slen if add_or_attend_input else slen + 1 
                             #    scores_matrix[:tlen, start: start + tlen +1] = torch.eye(tlen)
+                            tsim, p_labels = get_task_sim(prompt_encoders, 
+                                    target_embs = task_tuned_prompts,  
+                                    model=model.nested_model)
                             if cross_pt:
-                                save_image(eval_folder, model, {"score":scores_matrix}, 
-                                        square = square,
-                                        title = "score",
+                                save_image(eval_folder, model, 
+                                        {"score":scores_matrix, "tsim":tsim}, 
+                                        square = False,
+                                        title = "score-tsim",
                                         spec = "score-"+norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
                                                 + " | {:.2f}".format(mean_score))
