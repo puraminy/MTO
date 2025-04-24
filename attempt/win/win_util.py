@@ -185,6 +185,27 @@ def get_key(win = None):
         ch, hotkey = ord(hotkey[0]), hotkey[1:]
     return ch
 
+# Global heatmap constant (color pair numbers)
+HEATMAP = [201, 202, 203, 204, 205]
+
+def init_heatmap_colors():
+    # Choose foreground color for contrast (white on red/orange, black on yellow/white)
+    WHITE = 15 if cur.COLORS >= 16 else cur.COLOR_WHITE
+    BLACK = 0 if cur.COLORS >= 16 else cur.COLOR_BLACK
+
+    # Define background color indexes (standard or 256-color mode)
+    BG_WHITE = 15 if cur.COLORS >= 16 else cur.COLOR_WHITE
+    BG_YELLOW = 11 if cur.COLORS >= 16 else cur.COLOR_YELLOW
+    BG_ORANGE = 208  # xterm-256 color for orange
+    BG_RED = 9 if cur.COLORS >= 16 else cur.COLOR_RED
+
+    # Initialize color pairs with appropriate foreground/background
+    cur.init_pair(HEATMAP[0], BLACK, BG_WHITE)   # white bg, black text
+    cur.init_pair(HEATMAP[1], BLACK, BG_YELLOW)  # yellow bg, black text
+    cur.init_pair(HEATMAP[2], WHITE, cur.COLOR_GREEN)  # orange bg, white text
+    cur.init_pair(HEATMAP[3], BLACK, cur.COLOR_BLUE)     # red bg, white text
+    cur.init_pair(HEATMAP[4], WHITE, cur.COLOR_BLUE)     # red bg, white text
+
 def reset_colors(theme, bg=None):
     global back_color, TEXT_COLOR, ITEM_COLOR, SEL_ITEM_COLOR, TITLE_COLOR, DIM_COLOR, color_map
     if bg is None:
@@ -196,6 +217,7 @@ def reset_colors(theme, bg=None):
     ITEM_COLOR = int(theme["item-color"]) 
     TITLE_COLOR = int(theme["title-color"])
     DIM_COLOR =  int(theme["dim-color"]) 
+    init_heatmap_colors()
     reset_hl(theme)
     cur.init_pair(CUR_ITEM_COLOR, bg, int(theme["cur-item-color"]) % cur.COLORS)
     cur.init_pair(SEL_ITEM_COLOR, bg, int(theme["sel-item-color"]) % cur.COLORS)

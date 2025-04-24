@@ -492,6 +492,12 @@ def cat_colors(df,row,col, default=None):
         return MSG_COLOR
     return default
 
+def nu_colors(df,row,col, default=None):
+    number = df.iloc[row][col]
+    number = int(number)
+    number = min(number, 3)
+    return HEATMAP[number]
+
 def time_colors(df,row,col, default=None):
     rel_col = "time" 
     last_hour = datetime.now() - timedelta(hours = 1)
@@ -2838,6 +2844,12 @@ def show_df(df, summary=False):
             char = ""
             if char == "j":
                 char = "i"
+        if char == "n":
+            for col in sel_cols:
+                _ss = col.strip("nu-")
+                _col_index = sel_cols.index(col)
+                if _ss in pcols:
+                    sel_cols[_col_index] = "nu-" + col if _ss == col else _ss
         if char in ["n", "i"] and "fid" in df: # and prev_cahr != "x" and hk == "gG":
             backit(df, sel_cols)
             left = 0
@@ -4158,8 +4170,8 @@ def show_df(df, summary=False):
                     tdf = pd.concat([tdf, pd.DataFrame([new_note])], ignore_index=True)
                 else:
                     tdf.iloc[sel_row] = new_note 
-                if Path(note_file).is_file():
-                    shutil.copyfile(note_file,note_file.replace("notes.csv", now + "_notes.csv"))
+                #if Path(note_file).is_file():
+                #    shutil.copyfile(note_file,note_file.replace("notes.csv", now + "_notes.csv"))
                 tdf.to_csv(note_file)
             if "comment" in df:
                 df = tdf
@@ -4194,6 +4206,7 @@ def show_df(df, summary=False):
                         pcols.extend(col)
             for col in pcols:
                 cond_colors[col] = pivot_colors
+                cond_colors["nu-" + col] = nu_colors
 
             _sel_cols = [] 
             if score_col == score_cols[0]:
