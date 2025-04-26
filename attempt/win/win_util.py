@@ -200,11 +200,11 @@ def init_heatmap_colors():
     BG_RED = 9 if cur.COLORS >= 16 else cur.COLOR_RED
 
     # Initialize color pairs with appropriate foreground/background
-    cur.init_pair(HEATMAP[0], BLACK, BG_WHITE)   # white bg, black text
-    cur.init_pair(HEATMAP[1], BLACK, BG_YELLOW)  # yellow bg, black text
+    cur.init_pair(HEATMAP[0], WHITE, BG_WHITE)   # white bg, black text
+    cur.init_pair(HEATMAP[1], WHITE, BG_YELLOW)  # yellow bg, black text
     cur.init_pair(HEATMAP[2], WHITE, cur.COLOR_GREEN)  # orange bg, white text
-    cur.init_pair(HEATMAP[3], BLACK, cur.COLOR_BLUE)     # red bg, white text
-    cur.init_pair(HEATMAP[4], WHITE, cur.COLOR_BLUE)     # red bg, white text
+    cur.init_pair(HEATMAP[3], WHITE, cur.COLOR_BLUE)     # red bg, white text
+    cur.init_pair(HEATMAP[4], WHITE, cur.COLOR_BLACK)     # red bg, white text
 
 def reset_colors(theme, bg=None):
     global back_color, TEXT_COLOR, ITEM_COLOR, SEL_ITEM_COLOR, TITLE_COLOR, DIM_COLOR, color_map

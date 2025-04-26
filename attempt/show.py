@@ -495,7 +495,7 @@ def cat_colors(df,row,col, default=None):
 def nu_colors(df,row,col, default=None):
     number = df.iloc[row][col]
     number = int(number)
-    number = min(number, 3)
+    number = min(number, 4)
     return HEATMAP[number]
 
 def time_colors(df,row,col, default=None):
@@ -2850,6 +2850,7 @@ def show_df(df, summary=False):
                 _col_index = sel_cols.index(col)
                 if _ss in pcols:
                     sel_cols[_col_index] = "nu-" + col if _ss == col else _ss
+                left = 30
         if char in ["n", "i"] and "fid" in df: # and prev_cahr != "x" and hk == "gG":
             backit(df, sel_cols)
             left = 0
