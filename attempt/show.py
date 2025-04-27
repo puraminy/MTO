@@ -3449,7 +3449,7 @@ def show_df(df, summary=False):
                     # gdf = gdf.drop(index=0)
                     gdf = gdf[gdf['preds'] != "All"]
 
-                    gdf["label"] = prefix + "  --  " + mt + "    :" + str(label)
+                    gdf["label"] = str(prefix) + "  --  " + str(mt) + "    :" + str(label)
                     gdf["acc"] = acc
 
                     #precision_recall_df = gdf.apply(calculate_precision_recall, axis=1)

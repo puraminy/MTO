@@ -1190,7 +1190,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         if not self.training:
             gen_thresh_min = None 
             gen_thresh_max = None
-            if self.gen_conf is not None and "gen_norm_method" in self.gen_conf:
+            # TODO and False
+            if self.gen_conf is not None and "gen_norm_method" in self.gen_conf and False:
                 gen_norm_method = self.gen_conf["gen_norm_method"] 
             if self.gen_conf is not None and "gen_thresh_min" in self.gen_conf:
                 gen_thresh_min = self.gen_conf["gen_thresh_min"] 

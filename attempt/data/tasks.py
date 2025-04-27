@@ -175,7 +175,7 @@ class AbstractTask(abc.ABC):
         if self.labels_list is not None and self.map_labels is True:
             self.labels_map["distinct"] = {}
             for i, label in enumerate(self.labels_list):
-                self.labels_map["distinct"][label] = self.name + str(i)
+                self.labels_map["distinct"][label] = "<" + self.name[:2] + str(i) + ">"
 
         if not self.mapping in self.labels_map and self.map_labels:
             self.mapping = "map"
@@ -1022,10 +1022,10 @@ class AbstractTask(abc.ABC):
 
     def get_label_list(self):
         labels_list = []
-        if self.labels_map and self.mapping:
+        if self.labels_map and self.mapping and self.map_labels:
             for label in self.labels_list:
                 labels_list.append(
-                    "<" + self.labels_map[self.mapping][label] + ">")
+                    self.labels_map[self.mapping][label])
         return labels_list
 
     def seq2seq_format(self, sources: List[str],

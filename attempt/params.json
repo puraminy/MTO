@@ -4,7 +4,7 @@
   "/glue":"cola/mnli/qnli/rte/stsb/qqp/mrpc/sst2",
   "/pglue2":"cola/mnli/qnli/rte/stsb/mrpc2/mrpc/sst2",
   "/mglue":"mnli/qnli/qqp/mrpc/stsb",
-  "/pglue1":"mnli/qnli/mrpc/qqp",
+  "/pglue1":"mnli/qnli/mrpc/mrpc2",
   "tasks":"task_name",
   "t":"task_name",
   "d":"d_seed",

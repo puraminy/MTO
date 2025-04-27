@@ -309,8 +309,9 @@ def task_similarity(dif_ij, final_i, final_j, alpha=1.0):
 
     return similarity
 
-def get_task_sim(prompt_encoders, target_embs, model):
+def get_prompts_sim(prompt_encoders, target_embs, model):
     source_embs = {}
+    target_embs = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
     for enc in prompt_encoders:
         if enc.is_source:
             emb = enc(enc.net_inps)  # shape: [N, D] or [D]
@@ -318,18 +319,37 @@ def get_task_sim(prompt_encoders, target_embs, model):
                 emb = emb.mean(dim=0)
             source_embs[enc.name] = emb
 
-    target_names = list(target_embs.keys())
     source_names = list(source_embs.keys())
-
-    sim_matrix = torch.zeros(len(target_names), len(source_names))
-    for i, tname in enumerate(target_names):
+    sim_matrix = torch.zeros(len(target_embs), len(source_names))
+    for i, t in enumerate(target_embs):
         for j, sname in enumerate(source_names):
-            t = target_embs[tname]
             s = source_embs[sname]
             sim = F.cosine_similarity(t.unsqueeze(0), s.unsqueeze(0)).item()
             sim_matrix[i, j] = sim
 
     return sim_matrix, source_names
+
+def get_task_sim2(target_embs, model):
+    target_embs = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
+    sim_matrix = torch.zeros(len(target_names), len(target_names))
+    for i, t1  in enumerate(target_embs):
+        for j, t2 in enumerate(target_embs):
+            sim = F.cosine_similarity(t1.unsqueeze(0), t2.unsqueeze(0)).item()
+            sim_matrix[i, j] = sim
+
+    return sim_matrix
+
+def get_task_sim(target_embs, model):
+    target_embs = [e.squeeze(0) for k, e in target_embs.items()]
+    sim_matrix = torch.zeros(len(target_embs), len(target_embs))
+    
+    for i, t1 in enumerate(target_embs):
+        for j, t2 in enumerate(target_embs):
+            # Compute pairwise cosine similarity between all tokens
+            sim = F.cosine_similarity(t1.unsqueeze(1), t2.unsqueeze(0), dim=2).mean().item()
+            sim_matrix[i, j] = sim
+
+    return sim_matrix
 
 def cosine_similarity(A, B, N):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1988,7 +2008,8 @@ def train(**kwargs):
              t_args = dotdict(task_args.copy())
              task = AutoTask.get(task_name, config_name, task_args=t_args, tokenizer=tokenizer)
              p = task.get_prompts()
-             # label_tokens.extend(task.get_label_list())
+             print(task_name)
+             label_tokens.extend(task.get_label_list())
              prompts = {**prompts, **p}
              tid = task_name #get_id()
              if not tid in task_prompts:
@@ -1999,7 +2020,8 @@ def train(**kwargs):
              rel_sh = REL_TO_SHARED_TOKENS[task_name] if task_name in REL_TO_SHARED_TOKENS else task_name
              task_source_prompts_set[tid].extend(rel_sh.split())
 
-        # extend_tokenizer(tokenizer, label_tokens)
+        if False: #TODO kwargs.mapping == "distinct":
+            extend_tokenizer(tokenizer, label_tokens)
         for name, prompt_tokens in prompts.items():
             extend_tokenizer(tokenizer, prompt_tokens)
 
@@ -3193,7 +3215,7 @@ def train(**kwargs):
             if False:
                 trainer.log_metrics("test", metrics)
                 trainer.save_metrics("test", metrics)
-            skip_specials=kwargs.setdefault("skip_specials", True) 
+            skip_specials=kwargs.setdefault("skip_specials", not kwargs.mapping == "distinct") 
 
             # sssssssssss
             #predictions = np.argmax(predictions, axis=1)
@@ -3642,7 +3664,7 @@ def train(**kwargs):
                             df, scores, golds, preds = evaluate_test(task, test_dataset, 
                                     save_to, ds_name, auto_task, gen_conf, use_cache = use_cache)
                             task_prompt = attn_pt.task_prompt  # shape [1, L, N]
-                            task_tuned_prompts[task] = task_prompt.squeeze(0).mean(dim=0)
+                            task_tuned_prompts[task] = task_prompt
                             if mask is None:
                                 no_mask_test_files[task] = save_to
 
@@ -3735,7 +3757,7 @@ def train(**kwargs):
                             square = False
                             if multi_tasking:
                                 start = 0 if add_or_attend_input else 1 
-                                if model_args.compose_method == "wsp1":
+                                if model_args.compose_method == "wsp1" and False: #TODO and False
                                     scores_matrix = scores_matrix[:,start:slen + 1]
                                     square = True
                                 else:
@@ -3747,15 +3769,17 @@ def train(**kwargs):
                             #if len(torch.nonzero(scores_matrix)) < 1:
                             #    start = slen if add_or_attend_input else slen + 1 
                             #    scores_matrix[:tlen, start: start + tlen +1] = torch.eye(tlen)
-                            tsim, p_labels = get_task_sim(prompt_encoders, 
+                            psim, p_labels = get_prompts_sim(prompt_encoders, 
                                     target_embs = task_tuned_prompts,  
+                                    model=model.nested_model)
+                            tsim  = get_task_sim(target_embs = task_tuned_prompts,  
                                     model=model.nested_model)
                             if cross_pt:
                                 save_image(eval_folder, model, 
-                                        {"score":scores_matrix, "tsim":tsim}, 
-                                        square = False,
-                                        title = "score-tsim",
-                                        spec = "score-"+norm_method + "-" + str(gmin) \
+                                        {"score":scores_matrix, "psim":psim, "tsim":tsim}, 
+                                        square = {"score":False,"psim":False,"tsim":True},
+                                        title = "score-tsim-psim",
+                                        spec = "score-tsim-"+norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
                                                 + " | {:.2f}".format(mean_score))
                                 score_dict= {"sim":sim.round(decimals=2)} #, "rsim": rsim}
