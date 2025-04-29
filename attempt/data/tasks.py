@@ -136,7 +136,7 @@ class AbstractTask(abc.ABC):
     #large_data_without_all_splits = ["qqp", "qnli", "superglue-record", "sst2", "squad", "snli", "anli",
     #                                 "amazon-polarity", "yelp-polarity", "winogrande", "newsqa", "searchqa", "triviaqa", "nq", "hotpotqa"]
 
-    def __init__(self, config, task_args, task="", tokenizer=None):
+    def __init__(self, config, task_args, task="", task_index=-1, tokenizer=None):
         self.config = config
         mylogs.bp("tinit")
         if config is not None:
@@ -151,6 +151,7 @@ class AbstractTask(abc.ABC):
         self.template = task_args.template
         self.start_row = task_args.get("start_row", 0)
         self.tokenizer = tokenizer
+        self.task_index = task_index
         self.omit = task_args.get("omit_part",self.omit)
         self.qpos = task_args.get("qpos",self.qpos)
         self.chpos = task_args.get("chpos",self.chpos)
@@ -174,8 +175,10 @@ class AbstractTask(abc.ABC):
         self.mapping = task_args.mapping
         if self.labels_list is not None and self.map_labels is True:
             self.labels_map["distinct"] = {}
+            letter = chr(ord('a') + task_index)
             for i, label in enumerate(self.labels_list):
-                self.labels_map["distinct"][label] = "<" + self.name[:2] + str(i) + ">"
+                orig_label = self.labels_map["map"][label]
+                self.labels_map["distinct"][label] = letter + str(i)
 
         if not self.mapping in self.labels_map and self.map_labels:
             self.mapping = "map"
@@ -2888,45 +2891,12 @@ class WinoGrande(AbstractTask):
 
 TASK_MAPPING = OrderedDict(
     [
-        ('atomic', Atomic),
-        ('isAfter', isAfter),
-        ('isBefore', isBefore),
-        ('xIntent', xIntent),
-        ('xReason', xReason),
-        ('Desires', Desires),
-        ('Causes', Causes),
-        ('xAttr', xAttr),
-        ('xNeed', xNeed),
-        ('xReact', xReact),
-        ('oReact', oReact),
-        ('AtLocation', AtLocation),
-        ('ObjectUse', ObjectUse),
-        ('Desires', Desires),
-        ('CapableOf', CapableOf),
-        ('HasProperty', HasProperty),
-        ('isFilledBy', isFilledBy),
-        ('xWant', xWant),
-        ('oWant', oWant),
-        ('xEffect', xEffect),
-        ('oEffect', oEffect),
-        ('atomic-rels', AtomicRel),
-        ('free-cs', FreeCS),
-        ('free-rels', FreeRel),
-        ('task-clf', TaskClassifier),
-        ('task-clf2', TaskClassifier2),
-        ('splitter', Splitter),
-        ('omcs', SplitOMCS),
-        ('opsent', SplitOpSent),
-        ('sent', SplitSent),
-        ('squad', Squad),
-        ('mrpc', MRPC),
-        ('mrpc1', MRPC1),
-        ('mrpc2', MRPC2),
-        ('mrpc3', MRPC3),
         ('cola', COLA),
+        ('mnli', MNLI),
         ('sst2', SST2),
-        ('tweet-eval', TweetEval),
         ('imdb', IMDB),
+        ('qqp', QQP),
+        ('stsb', STSB),
         ('qnli', QNLI),
         ('qnli1', QNLI1),
         ('qnli2', QNLI2),
@@ -2934,10 +2904,12 @@ TASK_MAPPING = OrderedDict(
         ('rte1', RTE1),
         ('rte2', RTE2),
         ('wnli', WNLI),
-        ('mnli', MNLI),
         ('parsnli', ParsNLI),
-        ('qqp', QQP),
-        ('stsb', STSB),
+        ('tweet-eval', TweetEval),
+        ('mrpc', MRPC),
+        ('mrpc1', MRPC1),
+        ('mrpc2', MRPC2),
+        ('mrpc3', MRPC3),
         ('superglue-boolq', SuperGLUEBoolQ),
         ('superglue-rte', SuperGLUERTE),
         ('superglue-cb', SuperGLUECB),
@@ -2969,6 +2941,37 @@ TASK_MAPPING = OrderedDict(
         ('yelp', YelpPolarity),
         ('amazon', Amazon_Polarity),
         ('paws', PAWS),
+        ('atomic', Atomic),
+        ('isAfter', isAfter),
+        ('isBefore', isBefore),
+        ('xIntent', xIntent),
+        ('xReason', xReason),
+        ('Desires', Desires),
+        ('Causes', Causes),
+        ('xAttr', xAttr),
+        ('xNeed', xNeed),
+        ('xReact', xReact),
+        ('oReact', oReact),
+        ('AtLocation', AtLocation),
+        ('ObjectUse', ObjectUse),
+        ('Desires', Desires),
+        ('CapableOf', CapableOf),
+        ('HasProperty', HasProperty),
+        ('isFilledBy', isFilledBy),
+        ('xWant', xWant),
+        ('oWant', oWant),
+        ('xEffect', xEffect),
+        ('oEffect', oEffect),
+        ('atomic-rels', AtomicRel),
+        ('free-cs', FreeCS),
+        ('free-rels', FreeRel),
+        ('task-clf', TaskClassifier),
+        ('task-clf2', TaskClassifier2),
+        ('splitter', Splitter),
+        ('omcs', SplitOMCS),
+        ('opsent', SplitOpSent),
+        ('sent', SplitSent),
+        ('squad', Squad),
     ]
 )
 
@@ -2990,10 +2993,11 @@ class AutoTask:
     @classmethod
     def get(self, task, config, task_args=None, tokenizer=None):
         if task in TASK_MAPPING:
-            return TASK_MAPPING[task](config, task_args, task, tokenizer)
+            task_index = list(TASK_MAPPING.keys()).index(task)
+            return TASK_MAPPING[task](config, task_args, task, task_index, tokenizer)
         else:
             try:
-                return globals()[task](config, task_args, task, tokenizer)
+                return globals()[task](config, task_args, task, task_index, tokenizer)
             except:
                 raise ValueError(
                 "Unrecognized task {} for AutoTask Model.\n" +

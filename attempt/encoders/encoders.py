@@ -472,7 +472,7 @@ def add_pt_specials(tokenizer):
     num_tokens = tokenizer.add_special_tokens({"additional_special_tokens":added_tokens})
     return num_tokens
 
-def extend_tokenizer(tokenizer, tokens = []):
+def extend_tokenizer(tokenizer, model, tokens = []):
     cur_list = tokenizer.additional_special_tokens
     new_tokens = []
     new_tokens += tokens
@@ -484,6 +484,16 @@ def extend_tokenizer(tokenizer, tokens = []):
     if added_tokens:
         added_tokens = cur_list + added_tokens
         tokenizer.add_special_tokens({"additional_special_tokens":added_tokens})
+    model.resize_token_embeddings(len(tokenizer))
+    for tok in tokens:
+        with torch.no_grad():
+            tok_id = tokenizer.convert_tokens_to_ids(tok)
+            # model.get_input_embeddings().weight[tok_id].uniform_(-0.1, 0.1)
+            orig_tok = tok.strip("<").strip(">")
+            if hasattr(model, "lm_head"):
+                exid = tokenizer.convert_tokens_to_ids(orig_tok)
+                ex_emb = model.lm_head.weight.data[exid]
+                model.lm_head.weight[tok_id] = ex_emb.clone() # .uniform_(-0.1, 0.1)
 
 def create_encoder(name, model, tokenizer, prompt_tokens, 
         length=None, encoder_type="lstm", non_linear="relu",

@@ -2020,10 +2020,12 @@ def train(**kwargs):
              rel_sh = REL_TO_SHARED_TOKENS[task_name] if task_name in REL_TO_SHARED_TOKENS else task_name
              task_source_prompts_set[tid].extend(rel_sh.split())
 
-        if False: #TODO kwargs.mapping == "distinct":
-            extend_tokenizer(tokenizer, label_tokens)
+        if kwargs.mapping == "distinct":
+            attn_pt.max_new_tokens = 3
+        if kwargs.mapping == "distinct" and False: #TODO
+            extend_tokenizer(tokenizer, model, label_tokens)
         for name, prompt_tokens in prompts.items():
-            extend_tokenizer(tokenizer, prompt_tokens)
+            extend_tokenizer(tokenizer, model, prompt_tokens)
 
         # mmmmmmmmmmmmm Add source prompts
         prompt_encoders = []
@@ -2251,10 +2253,15 @@ def train(**kwargs):
     rgrad = len([p for p in model.parameters() if p.requires_grad])
     nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     mylogs.plog.info("Before freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
+    flh = kwargs.get("freeze_lm_head", True)
+    if not flh:
+        model.lm_head.weight = torch.nn.Parameter(model.lm_head.weight.clone())
     if attn_pt is not None: # and adapter_args.freeze_model is True:
         model = modify_model_after_init(
             wrapped_model, training_args, adapter_args, adapter_config)
    
+    if not flh:
+        model.nested_model.lm_head.weight.requires_grad = True
     learn_loaded_prompts = kwargs.setdefault("learn_loaded_prompts", True) 
     learn_private_prompts = kwargs.setdefault("learn_private_prompts", True) 
     requires_grad_encoders = []
@@ -3215,8 +3222,7 @@ def train(**kwargs):
             if False:
                 trainer.log_metrics("test", metrics)
                 trainer.save_metrics("test", metrics)
-            skip_specials=kwargs.setdefault("skip_specials", not kwargs.mapping == "distinct") 
-
+            skip_specials=kwargs.setdefault("skip_specials", True) #TODO and not kwargs.mapping == "distinct" 
             # sssssssssss
             #predictions = np.argmax(predictions, axis=1)
             #predictions = tokenizer.batch_decode(predictions)
@@ -3677,7 +3683,14 @@ def train(**kwargs):
                               if masking_scores[0]=="m_score": 
                                  mscore = "mean_rouge" 
                               task_score = scores[mscore]
-                              pred_count = len(set(preds)) # scores[mscore]
+                              pred_count = 0 # len(set(preds)) # scores[mscore]
+                              _preds = set(preds)
+                              for g in set(golds):
+                                  for p in _preds:
+                                      if g in p:
+                                          pred_count += 1
+                                          _preds.remove(p)
+                                          break
                             else:
                               task_score = df[masking_scores[0]].mean() 
                             task_scores[rm][test_key][task] = task_score

@@ -1874,6 +1874,7 @@ class CustomTrainer(Trainer):
         self.temperature = temperature  # Scaling factor for contrastive loss
         self.task_labels = []
         self.is_classifier = cls
+        self.max_new_tokens = 10
     
     def _remove_unused_columns(self, dataset, description=None):
         # if description != 'training':
@@ -2052,7 +2053,7 @@ class CustomTrainer(Trainer):
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     num_beams=1,
-                    max_new_tokens=1 if self.model.classifier is not None else 10,
+                    max_new_tokens=self.max_new_tokens,
                     repetition_penalty=2.0,
                     # logits_processor=logits_processor
                 )
