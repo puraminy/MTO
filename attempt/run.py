@@ -1721,6 +1721,9 @@ def train(**kwargs):
     total_samples = 0
     warmup_steps = 0
     total_steps = 1
+    warmup_ratio = kwargs.get("warmup_ratio",0.2)
+    if "warmup_ratio" in main_vars:
+        training_args.warmup_ratio = warmup_ratio
     steps = 0
     if training_args.do_train:
         for ti, (task_name, config_name) in enumerate(zip(tasks, data_args.dataset_config_name), start=1):
@@ -1735,7 +1738,7 @@ def train(**kwargs):
         if training_args.warmup_steps is not None:
             warmup_steps = training_args.warmup_steps
         else:
-            warmup_steps = 0.2 * steps
+            warmup_steps = warmup_ratio * steps
             training_args.warmup_steps = warmup_steps
         total_steps = steps + warmup_steps + 5
     
@@ -2558,6 +2561,7 @@ def train(**kwargs):
     attn_params = []
     prompt_params = []
     mylogs.bp("lr")
+    attn_weight_decay = kwargs.get("attn_weight_decay", 0.1)
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
         if attn_pt is not None:
             for name, param in attn_pt.named_parameters():
@@ -2573,7 +2577,7 @@ def train(**kwargs):
 
         attn_params = set(attn_params)
         grouped_params.append({'params': list(attn_params), 
-            'lr': model_args.attn_learning_rate})
+            'lr': model_args.attn_learning_rate, "weight_decay": attn_weight_decay})
         
 
     ########### My Code

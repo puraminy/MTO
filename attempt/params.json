@@ -42,6 +42,7 @@
   "uma":"use_masked_attn",
   "lr":"learning_rate",
   "alr":"attn_learning_rate",
+  "awd":"attn_weight_decay",
   "inp":"attend_input",
   "adinp":"add_input",
   "lr":"learning_rate",

@@ -611,8 +611,8 @@ def summarize(df, rep_cols=None, score_col=None, rename =True):
     if score_col is not None: 
         score_cols = [score_col,'num_preds'] 
     else:
-        #score_cols = ['m_score', 'num_preds'] 
-        score_cols = ['rouge_score', 'num_preds'] 
+        score_cols = ['m_score', 'num_preds'] 
+        #score_cols = ['rouge_score', 'num_preds'] 
 
     main_vars = get_main_vars(df)
     rep_cols = rep_cols + score_cols + main_vars + sel_cols 
@@ -1445,7 +1445,8 @@ def show_df(df, summary=False):
             # paths = glob(run)
             spath = "images/exp-" + str(runid)
             if Path(spath).exists():
-                shutil.rmtree(spath)
+                #shutil.rmtree(spath)
+                pass
             Path(spath).mkdir(parents=True, exist_ok=True)
             images = []
             kk = 1
@@ -1981,15 +1982,15 @@ def show_df(df, summary=False):
             exprs, _ = get_sel_rows(tdf)
             merge = "horiz"
             image_keys = "" 
-            if char == "o" and "images" in settings:
-                image_keys = settings["images"].split("@")
-                image_keys = ["router", "sim"]
+            if char == "o": # and "images" in settings:
+                # image_keys = settings["images"].split("@")
+                image_keys = ["score", "sim"]
             elif char == "y":
                 image_keys = ["effect", "score","router"]
                 merge = "horiz"
             elif char == "k" or char == "p":
-                image_keys = ["score","sim"]
-                merge = "horiz"
+                image_keys = ["score","sim","mask"]
+                merge = "vert"
 
             experiment_images, fnames = get_images(tdf, exprs, 'eid', 
                     merge = merge, image_keys = image_keys, crop = char == "k")
@@ -3787,7 +3788,7 @@ def show_df(df, summary=False):
                         'MaskedAnswerPrompting': 'MAP', 'MaskedChoicePrompting': 'MCP' 
                         }
 
-                df[x_col] = df[x_col].map(category3_mapping)
+                # df[x_col] = df[x_col].map(category3_mapping)
 
                 palette = ['#2c903c', '#4173c4']
                 g = sns.FacetGrid(df, col=filter_col, col_wrap=3, height=4, aspect=1)  #
@@ -3796,6 +3797,7 @@ def show_df(df, summary=False):
                     g.map_dataframe(sns.barplot, x=x_col, y=y_col, 
                             hue=hue_col, palette="muted")
                 else:
+                    g = sns.FacetGrid(df, col=None, row=None)  # No faceting
                     hue_col = selected_cols[3]  if len(selected_cols) > 3 else filter_col
                     g.map_dataframe(sns.lineplot, x=x_col, y=y_col, 
                             hue=hue_col, palette="muted", marker='o')
