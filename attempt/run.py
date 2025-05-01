@@ -1250,8 +1250,6 @@ def train(**kwargs):
 
     new_exp_folder = kwargs.get("new_exp_folder","")
     prompts_conf = kwargs.get("prompts_conf", None)
-    if False: #prompts_conf in ["SLP","SL"]:
-        kwargs["num_train_epochs"] = int(kwargs["num_train_epochs"]) + 10
     if prompts_conf in ["SIL","SL"] and "compose_method" in kwargs and kwargs["compose_method"] == "wsp1":
         kwargs["compose_method"] = "wavg" 
 
@@ -1567,11 +1565,13 @@ def train(**kwargs):
     # an option to explicitly specify the method of training 
     # (pt: prompt-tuning, ft:fine-tuning, px:prefix-tuning etc.)
     method = kwargs.setdefault("method", "")
-    if kwargs.setdefault("adjust_epochs", True) and data_args.max_train_samples <= 10:
+    if kwargs.get("adjust_epochs", False): 
         num_epochs = training_args.num_train_epochs
-        num_epochs *= 2
+        if data_args.max_train_samples <= 20:
+            num_epochs += 5
+        if prompts_conf in ["SLP","SL"]:
+            num_epochs += 8
         training_args.num_train_epochs = num_epochs
-    
 
     #if type(data_args.task_name) == list:
     #    model_args.multi_task = True
@@ -3409,7 +3409,7 @@ def train(**kwargs):
         results = {}
         ds_backup = None
         mylogs.bp("gen_conf")
-        gnm = ["soft"]
+        gnm = [norm_method]
         if "gen_norm_method" in main_vars:
             gnm = kwargs.setdefault("gen_norm_method",["soft"])
             if type(gnm) != list: gnm = [gnm] 
@@ -3506,6 +3506,7 @@ def train(**kwargs):
         kk = 0
         sdf_rows = []
         img_list = []
+        keep_masking_results = kwargs.get("keep_masking_results", False)
         sep_eval = kwargs.get("separate_eval", False)
         if sep_eval: 
             exp_folder = Path(training_args.output_dir).parent.parent
@@ -3565,6 +3566,8 @@ def train(**kwargs):
 
                         mylogs.bp("pic")
                         rv = "Eval" if not reval else "Reval"
+                        if mask is not None:
+                            rv += "_mask_"
                         test_num = str(data_args.max_test_samples) 
                         if test_num == "-1":
                             test_num = "all"
@@ -3664,6 +3667,8 @@ def train(**kwargs):
                             if method == "pt" or cross_pt: 
                                 if mask is not None: 
                                     mylogs.bp("cache")
+                                    if not keep_masking_results:
+                                        save_to = None
                                     task_index = y_labels.index(task)
                                     task_mask = mask_matrix[task_index]
                                     orig_task_mask = orig_mask_matrix[task_index]
