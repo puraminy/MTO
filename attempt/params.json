@@ -67,6 +67,7 @@
   "b":"bias",
   "pb":"private_bias",
   "ws":"warmup_steps",
+  "wr":"warmup_ratio",
   "ts":"target_share",
   "tst":"target_share_temperature",
   "amin":"anneal_min",
