@@ -2979,6 +2979,8 @@ def train(**kwargs):
         test_datasets = {}
         max_target_lengths = []
         first_ds = ""
+        now = datetime.datetime.now(mylogs.tehran)
+        now_str = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
         auto_tasks = {}
         for test_dataset, test_dataset_config in zip(data_args.test_dataset_name, 
                 data_args.test_dataset_config_name): 
@@ -3259,8 +3261,6 @@ def train(**kwargs):
             df["prefix"] = ds_name
             df["template"] = data_args.template
             df["resp"] = ""
-            now = datetime.datetime.now(mylogs.tehran)
-            now_str = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
             df["time"] = now_str
             df["date"] = mylogs.today 
             df["query"] = ""
