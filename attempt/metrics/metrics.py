@@ -423,7 +423,7 @@ def bert_score(scorer, hyps, refs, device):
 rel_target_omits = {
    # "xIntent":"to",
 }
-def do_score(df, scorers, save_path, reval=False, scores_to_image=False, use_wandb=False, scorer=None):
+def do_score(df, scorers, save_path=None, reval=False, scores_to_image=False, use_wandb=False, scorer=None):
     #try:
     #    nltk_path = str(nltk.data.find("tokenizers/punkt"))
     #    mlog.info(f"using nltk from: {nltk_path}")
@@ -685,10 +685,11 @@ def do_score(df, scorers, save_path, reval=False, scores_to_image=False, use_wan
     df.reset_index(drop=True, inplace=True)
     mlog.info("Saving results %s", save_path)
     save_fname = now + "_full_results.tsv"
-    if not save_path.endswith("tsv"):
-        save_path = os.path.join(save_path, save_fname) 
-    print("Saving results %s", save_path)
-    df.to_csv(save_path, index=False, sep="\t")
+    if save_path is not None:
+        if not save_path.endswith("tsv"):
+            save_path = os.path.join(save_path, save_fname) 
+        print("Saving results %s", save_path)
+        df.to_csv(save_path, index=False, sep="\t")
 #################
     ret_scores = {}
     for sname, metric in zip(

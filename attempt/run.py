@@ -20,6 +20,7 @@ Fine-tuning the library models for sequence to sequence.
 # You can also adapt this script on your own sequence to sequence task. Pointers for this are left as comments.
 import sys
 import wandb
+import datetime
 #sys.path.append('/home/ahmad/ATTEMPT')
 
 from utils import * 
@@ -52,6 +53,7 @@ from transformers import (
     set_seed,
     get_linear_schedule_with_warmup
 )
+from torch.optim.lr_scheduler import LambdaLR
 from torch.optim import AdamW
 from transformers.optimization import Adafactor
 import transformers
@@ -1250,8 +1252,6 @@ def train(**kwargs):
 
     new_exp_folder = kwargs.get("new_exp_folder","")
     prompts_conf = kwargs.get("prompts_conf", None)
-    if False: #prompts_conf in ["SLP","SL"]:
-        kwargs["num_train_epochs"] = int(kwargs["num_train_epochs"]) + 10
     if prompts_conf in ["SIL","SL"] and "compose_method" in kwargs and kwargs["compose_method"] == "wsp1":
         kwargs["compose_method"] = "wavg" 
 
@@ -1567,11 +1567,17 @@ def train(**kwargs):
     # an option to explicitly specify the method of training 
     # (pt: prompt-tuning, ft:fine-tuning, px:prefix-tuning etc.)
     method = kwargs.setdefault("method", "")
-    if kwargs.setdefault("adjust_epochs", True) and data_args.max_train_samples <= 10:
+    if kwargs.get("adjust_epochs", False): 
         num_epochs = training_args.num_train_epochs
-        num_epochs *= 2
+        if data_args.max_train_samples <= 20:
+            num_epochs += 5
+        if data_args.max_train_samples > 100:
+            num_epochs -= 5
+        elif data_args.max_train_samples > 50:
+            num_epochs -= 3
+        if prompts_conf in ["SLP","SL"]:
+            num_epochs += 8
         training_args.num_train_epochs = num_epochs
-    
 
     #if type(data_args.task_name) == list:
     #    model_args.multi_task = True
@@ -1995,7 +2001,7 @@ def train(**kwargs):
         added = add_pt_specials(tokenizer)
         logger.info("%s tokens was addded", added)
         new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
-        model.resize_token_embeddings(new_vocab_size)
+        model.resize_token_embeddings(new_vocab_size, pad_to_multiple_of=8)
         # mmmmmmmmmmmmm Add target prompts
         mylogs.bp("encoders")
         prompts = {}
@@ -2132,7 +2138,7 @@ def train(**kwargs):
         if prompt_sharing == "shared_prompts":
             encoders_prompts = task_prompts
         new_vocab_size = (len(tokenizer) + 7) // 8 * 8  
-        model.resize_token_embeddings(new_vocab_size)
+        model.resize_token_embeddings(new_vocab_size, pad_to_multiple_of=8)
         load_prompts = kwargs.setdefault("load_prompts", False) 
         if training_args.do_train:
             load_prompts = False
@@ -2239,7 +2245,7 @@ def train(**kwargs):
             source_prompt_length,
             target_prompt_length, tasks = tasks) 
         new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
-        model.resize_token_embeddings(new_vocab_size)
+        model.resize_token_embeddings(new_vocab_size, pad_to_multiple_of=8)
 
     if log_var and preview == "encoders":
         mylogs.plog.info("======== Number of encoders: %s", len(prompt_encoders))
@@ -2628,14 +2634,12 @@ def train(**kwargs):
         shr_prompt_params = set(shr_prompt_params)
         tgt_prompt_params = set(tgt_prompt_params)
         pvt_prompt_params = set(pvt_prompt_params)
-        grouped_params.append({'params': list(shr_prompt_params), 
-            'lr': prompt_learning_rate})
         grouped_params.append({'params': list(src_prompt_params), 
             'lr': source_prompt_learning_rate})
-        grouped_params.append({'params': list(tgt_prompt_params), 
-            'lr': target_prompt_learning_rate})
         grouped_params.append({'params': list(pvt_prompt_params), 
             'lr': private_prompt_learning_rate})
+        grouped_params.append({'params': list(tgt_prompt_params), 
+            'lr': target_prompt_learning_rate})
         prompt_params = list(src_prompt_params) \
                 + list(tgt_prompt_params) + list(pvt_prompt_params)
 
@@ -2651,7 +2655,26 @@ def train(**kwargs):
     opt_type = kwargs.get("opt_type","adam")
     scheduler = None
     optim = None
-    if opt_type == "sep":
+    def make_linear_decay_fn(total_steps, num_warmup):
+        def lr_fn(step):
+            if step < num_warmup:
+                return float(step) / float(max(1, num_warmup))
+            return max(
+                0.0, float(total_steps - step) / float(max(1, total_steps - num_warmup))
+            )
+        return lr_fn
+
+    # build one λ per group
+    if opt_type == "lamb":
+        lambdas = []
+        for i, group in enumerate(grouped_params):
+            if i in [0]:  # tgt and pvt prompts stay constant
+                lambdas.append(lambda step: 1.0)
+            else:
+                lambdas.append(make_linear_decay_fn(total_steps, warmup_steps))
+        optim = AdamW(grouped_params, lr=learning_rate)
+        scheduler = LambdaLR(optim, lr_lambda=lambdas)
+    elif opt_type == "sep":
         optim, scheduler = get_optimizer(model, steps,
                 source_prompt_learning_rate, 
                 model_args.attn_learning_rate, 0.01)
@@ -3236,7 +3259,9 @@ def train(**kwargs):
             df["prefix"] = ds_name
             df["template"] = data_args.template
             df["resp"] = ""
-            df["time"] = mylogs.now 
+            now = datetime.datetime.now(mylogs.tehran)
+            now_str = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
+            df["time"] = now_str
             df["date"] = mylogs.today 
             df["query"] = ""
             df["vtarget"] = ""
@@ -3409,7 +3434,7 @@ def train(**kwargs):
         results = {}
         ds_backup = None
         mylogs.bp("gen_conf")
-        gnm = ["soft"]
+        gnm = [norm_method]
         if "gen_norm_method" in main_vars:
             gnm = kwargs.setdefault("gen_norm_method",["soft"])
             if type(gnm) != list: gnm = [gnm] 
@@ -3506,6 +3531,7 @@ def train(**kwargs):
         kk = 0
         sdf_rows = []
         img_list = []
+        keep_masking_results = kwargs.get("keep_masking_results", False)
         sep_eval = kwargs.get("separate_eval", False)
         if sep_eval: 
             exp_folder = Path(training_args.output_dir).parent.parent
@@ -3565,6 +3591,8 @@ def train(**kwargs):
 
                         mylogs.bp("pic")
                         rv = "Eval" if not reval else "Reval"
+                        if mask is not None:
+                            rv += "_mask_"
                         test_num = str(data_args.max_test_samples) 
                         if test_num == "-1":
                             test_num = "all"
@@ -3664,6 +3692,8 @@ def train(**kwargs):
                             if method == "pt" or cross_pt: 
                                 if mask is not None: 
                                     mylogs.bp("cache")
+                                    if not keep_masking_results:
+                                        save_to = None
                                     task_index = y_labels.index(task)
                                     task_mask = mask_matrix[task_index]
                                     orig_task_mask = orig_mask_matrix[task_index]
