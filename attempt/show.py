@@ -499,6 +499,7 @@ def nu_colors(df,row,col, default=None):
     return HEATMAP[number]
 
 def time_colors(df,row,col, default=None):
+    return TEXT_COLOR #TODO
     rel_col = "time" 
     last_hour = datetime.now() - timedelta(hours = 1)
     last_10_minutes = datetime.now() - timedelta(minutes = 10)
@@ -1919,6 +1920,7 @@ def show_df(df, summary=False):
                 consts["filter"] += " " + col + "='" + str(val) + "'"
             else:
                 consts["filter"] = col + "='" + str(val) + "'"
+            cond_set[col] = f"(df['{col}'] == '{val}')"
             df_conds.append((col, df[col] == val))
         elif char == "=" and prev_char == "x":
             col = info_cols[-1]
@@ -2363,7 +2365,7 @@ def show_df(df, summary=False):
             df = df.sort_values(by=sort, ascending=asc)
             selected_cols = []
             asc = not asc
-        if char in ["m","s"] and context == "grouping":
+        if char in ["m"] and context == "grouping":
             if not selected_cols:
                 selected_cols = ["label","max_train_samples"]
             if char == "m":
@@ -5054,6 +5056,7 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id):
                 df["folder"] = folder 
                 eid = folders[folder]
                 df["eid"] = eid 
+                df["time"] = eid 
                 _pp = _dir + "/*.png"
                 png_files = glob(_pp)
                 if not png_files:
