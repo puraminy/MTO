@@ -951,7 +951,7 @@ class MyDF:
     is_filtered = False
     def __init__(self, df, context, sel_cols, cur_col,info_cols, 
             sel_rows, sel_row, cur_row, 
-            left, group_col, selected_cols, sort, is_filtered, **kwargs):
+            left, group_col, selected_cols, sort, is_filtered, cond_set, **kwargs):
         self.df = df
         self.context = context
         self.sel_cols = sel_cols
@@ -965,6 +965,7 @@ class MyDF:
         self.selected_cols = selected_cols
         self.sort = sort
         self.is_filtered = is_filtered
+        self.cond_set = cond_set
 
 
 def show_df(df, summary=False):
@@ -1065,7 +1066,8 @@ def show_df(df, summary=False):
             return
         if not cur_df:
             cur_df = MyDF(df, context, sel_cols, cur_col,info_cols, 
-                sel_rows, sel_row, cur_row, left, group_col, selected_cols, sort, is_filtered)
+                sel_rows, sel_row, cur_row, left, group_col, 
+                selected_cols, sort, is_filtered, cond_set)
         back.append(cur_df)
         general_keys["b"] = "back"
 
@@ -1189,7 +1191,6 @@ def show_df(df, summary=False):
 
     sel_fid = "" 
     df_cond = True
-    df_conds = []
     open_dfnames = [dfname]
     dot_cols = {}
     selected_cols = []
@@ -1659,8 +1660,10 @@ def show_df(df, summary=False):
                 infos.append("{:<5}:{}".format(key,val))
         if show_infos or show_rest or show_consts or show_extra:
             info_lines = change_info(infos)
-
-        prev_char = chr(ch)
+        try:
+            prev_char = chr(ch)
+        except:
+            pass
         prev_cmd = cmd
         if not ms_cmd:
             if global_cmd and not hotkey or hotkey == "q":
@@ -1668,15 +1671,18 @@ def show_df(df, summary=False):
                 global_cmd = ""
             else:
                 cmd = ""
-            if hotkey == "":
-                cur.doupdate()
-                if new_df:
-                    cur.flushinp()
-                    cur.flash()
-                ch = std.getch()
-            else:
-                ch, hotkey = ord(hotkey[0]), hotkey[1:]
-            char = chr(ch)
+            try:
+                if hotkey == "":
+                    cur.doupdate()
+                    if new_df:
+                        cur.flushinp()
+                        cur.flash()
+                        ch = std.getch()
+                else:
+                    ch, hotkey = ord(hotkey[0]), hotkey[1:]
+                char = chr(ch)
+            except:
+                mbeep()
         else:
             ch = 0
             char = ""
@@ -1885,18 +1891,7 @@ def show_df(df, summary=False):
             # cur_df = back.pop()
             backit(df,sel_cols)
             df = pdf # cur_df.df
-            df_conds.append((col, df[col] == val))
-            df_conds.sort(key=lambda tup: tup[0])
-            df_cond = True
-            prev_col = -1
-            for col, cond in df_conds:
-               if col == prev_col: 
-                   df_cond = df_cond | cond
-               else:
-                   df_cond = df_cond & cond
-               prev_col = col
-            df = df[df_cond]
-            df_conds = [] 
+            cond_set[col] = f"(df['{col}'] == '{val}')"
             group_col = ""
             keep_uniques = False
         elif char == "-":
@@ -1920,8 +1915,11 @@ def show_df(df, summary=False):
                 consts["filter"] += " " + col + "='" + str(val) + "'"
             else:
                 consts["filter"] = col + "='" + str(val) + "'"
-            cond_set[col] = f"(df['{col}'] == '{val}')"
-            df_conds.append((col, df[col] == val))
+            if isinstance(val, str):
+                cond_set[col] = f"(df['{col}'] == '{val}')"
+            else:
+                cond_set[col] = f"(df['{col}'] == {val})"                
+            # show_consts = True
         elif char == "=" and prev_char == "x":
             col = info_cols[-1]
             sel_cols.insert(cur_col, col)
@@ -2379,20 +2377,31 @@ def show_df(df, summary=False):
             backit(df, sel_cols)
             context = "grouping"
             shortkeys["grouping"] = {"m":"show mean","s":"show std"}
+
             cols = selected_cols.copy()
             scol = sel_cols[cur_col]
+
             if not selected_cols:
                 cols = ["label", "max_train_samples"]
+
             if len(cols) > 0:
-                if "All" in df:
-                    df = df.groupby(cols, as_index=False)["All"].agg(['mean', 'std']).reset_index()
-                else:
-                    df = df.groupby(cols, as_index=False)["m_score"].agg(['mean', 'std']).reset_index()
-                # df = df.groupby(cols, as_index=False).mean(numeric_only=True).reset_index()
-                # df.iloc[:, -2:] = df.iloc[:, -2:] * 100
-                df = df.round(2)
+                target_col = "All" if "All" in df else "m_score"
+                df = df.groupby(cols, as_index=False).agg({
+                    target_col: ['mean', 'std', 'count'],
+                    'd_seed': lambda x: ', '.join(map(str, x.unique()))
+                }).reset_index()
+
+                # Flatten MultiIndex columns
+                df.columns = ['_'.join(col).strip('_') for col in df.columns.values]
+
+                # Optional rounding for numeric columns
+                for col in df.columns:
+                    if df[col].dtype in ['float64', 'float32']:
+                        df[col] = df[col].round(2)
+
                 sel_cols = list(df.columns)
                 cond_colors["mean"] = score_colors
+
             selected_cols = []
             left = 0
         elif char in ["g"]: #, "u"]:
@@ -3095,20 +3104,22 @@ def show_df(df, summary=False):
                     _agg[c] = "first"
             df = df.groupby(list(dot_cols.keys())).agg(_agg).reset_index(drop=True)
         elif is_enter(ch) and prev_char == "=":
-           backit(df, sel_cols)
-           df_conds.sort(key=lambda tup: tup[0])
-           df_cond = True
-           prev_col = -1
-           for col, cond in df_conds:
-               if col == prev_col: 
-                   df_cond = df_cond | cond
-               else:
-                   df_cond = df_cond & cond
-               prev_col = col
-           df = df[df_cond]
-           df_conds = [] 
-           group_col = ""
-           keep_uniques = False
+            backit(df, sel_cols)
+            cond = ""
+            for c,v in cond_set.items():
+                cond += "(" + v + ") & "
+            cond = cond.strip(" & ")
+            # mlog.info("cond %s, ", cond)
+            if cond:
+               df = df[eval(cond)]
+               #df = df.reset_index()
+               filter_df = df
+               if not "filter" in extra:
+                  extra["filter"] = []
+               extra["filter"].append(cond)
+               sel_row = 0
+            group_col = ""
+            keep_uniques = False
         elif is_enter(ch) or char in ["f", "F"]:
             if (is_enter(ch) or char == "f"): # and is_filtered:
                df = pdf # back_df
@@ -3783,8 +3794,9 @@ def show_df(df, summary=False):
                 y_col = selected_cols[2]
                 # unique_filter_values = df[filter_col].unique()
                 # desired_order = ['xAttr', 'AtLocation', 'ObjectUse', 'xIntent', 'xWant', 'xNeed']
+                desired_order = ['SIL', 'SILP', 'SL','SLP']
 
-                # df[filter_col] = pd.Categorical(df[filter_col], categories=desired_order, ordered=True)
+                df[filter_col] = pd.Categorical(df[filter_col], categories=desired_order, ordered=True)
                 category3_mapping = {
                         'AnswerPrompting': 'AP', 'ChoicePrompting': 'CP',
                         'MaskedAnswerPrompting': 'MAP', 'MaskedChoicePrompting': 'MCP' 
@@ -3793,7 +3805,7 @@ def show_df(df, summary=False):
                 # df[x_col] = df[x_col].map(category3_mapping)
 
                 palette = ['#2c903c', '#4173c4']
-                g = sns.FacetGrid(df, col=filter_col, col_wrap=3, height=4, aspect=1)  #
+                g = sns.FacetGrid(df, col=filter_col, col_wrap=2, height=4, aspect=1)  #
                 if cmd == "bar":
                     hue_col = selected_cols[3]  if len(selected_cols) > 3 else x_col
                     g.map_dataframe(sns.barplot, x=x_col, y=y_col, 
@@ -4745,14 +4757,17 @@ def show_df(df, summary=False):
 
                 save_obj(dfname, "dfname", dfname)
         if char == "R" and prev_char != "x":
-            filter_df = orig_df
-            df = filter_df
-            FID = "fid" 
-            reset = True
+            #filter_df = orig_df
+            #df = filter_df
+            #FID = "fid" 
+            #reset = True
+            cur_files = list(main_df["path"].unique())
+            new_dfs = get_files(root_path, dfname, dftype, summary=True, limit=-1, 
+                    current_files = cur_files)
             #sel_cols = group_sel_cols 
             #save_obj([], "sel_cols", context)
             #save_obj([], "info_cols", context)
-            hotkey = hk
+            # hotkey = hk
         if char == "R" and prev_char == "x":
             df = main_df
             sel_cols = list(df.columns)
@@ -4772,6 +4787,7 @@ def show_df(df, summary=False):
                 cur_col = cur_df.cur_col
                 left = cur_df.left
                 is_filtered = cur_df.is_filtered
+                cond_set = cur_df.cond_set
                 group_col = cur_df.group_col
                 if back:
                     back_df = back[-1].df
@@ -4976,6 +4992,7 @@ std = None
 check_time = False
 hotkey = ""
 dfname = ""
+dftype = ""
 global_cmd = ""
 global_search = ""
 global_summary = False
@@ -4983,7 +5000,7 @@ root_path = ""
 base_dir = os.path.join(home, "datasets", "comet")
 data_frame = None
 
-def get_files(dfpath, dfname, dftype, summary, limit, file_id):
+def get_files(dfpath, dfname, dftype, summary, limit, file_id="parent", current_files=[]):
     if not dfname:
         mlog.info("No file name provided")
     else:
@@ -5009,6 +5026,8 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id):
                     last_hour = datetime.now() - timedelta(hours = 5)
                     cond = cond and ctime > last_hour
                 if dftype in _file and cond: 
+                    if root_file in current_files:
+                        continue
                     matched_files.append((os.path.getctime(root_file), root_file))
         matched_files.sort(reverse=True)
         if limit > 0:
@@ -5056,7 +5075,7 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id):
                 df["folder"] = folder 
                 eid = folders[folder]
                 df["eid"] = eid 
-                df["time"] = eid 
+                # df["time"] = eid 
                 _pp = _dir + "/*.png"
                 png_files = glob(_pp)
                 if not png_files:
@@ -5202,7 +5221,7 @@ def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, n
         debugpy.listen(('0.0.0.0', int(port)))
         print("Waiting for client at run...port:", port)
         debugpy.wait_for_client()  # blocks execution until client is attached
-    global dfname, hotkey, global_cmd, global_search,check_time, data_frame, root_path, global_summary
+    global dfname, dftype, hotkey, global_cmd, global_search,check_time, data_frame, root_path, global_summary
     if summary:
         hkey = hkey.replace("C","").replace("G","")
     global_summary = summary
@@ -5212,6 +5231,7 @@ def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, n
     hotkey = hkey 
     global_cmd = cmd
     dfname = fname
+    dftype = ftype
     if not fname:
         fname = [ftype]
     set_app("showdf")
