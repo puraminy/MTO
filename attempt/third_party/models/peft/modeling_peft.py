@@ -1279,8 +1279,10 @@ class AttentivePromptEncoder(torch.nn.Module):
                soft_prompts = avg_prompts * private_prompt 
             elif compose_method == "wcp1": 
                soft_prompts = torch.cat([avg_prompts,private_prompt], dim=2)
-            attn_sel_scores = torch.cat(
-                   [attn_sel_scores, target_shares.reshape(batch_size, 1, 1)], dim=-1)
+            # attn_sel_scores = torch.cat(
+            #       [attn_sel_scores, target_shares.reshape(batch_size, 1, 1)], dim=-1)
+            alpha_scores = alpha.expand(batch_size, 1, 1)  # [B, 1, 1]
+            attn_sel_scores = torch.cat([attn_sel_scores, alpha_scores], dim=-1)
             attend_to_idx = torch.cat([attend_to_idx, target_idx], dim=-1) 
         elif compose_method == "wmp":
             mylogs.bp("wmp")
