@@ -649,7 +649,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
         except FileNotFoundError as e:
             print(e)
             raise ValueError( f"Looking for *{cfg_pat}* {confs} were matched: " + exp_conf)
-        prev_exp_folder = exp_args["load_model_dir"]
+        prev_exp_folder = exp_args["load_model_dir"] if "load_model_dir" in exp_args else ""
         prev_save_path = exp_args.get("save_path","")
         copy_prev_exp = copy_prev_exp or exp_args.get("copy_prev_exp", False)
         exp_conf_name = Path(exp_conf).stem
