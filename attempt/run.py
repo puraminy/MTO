@@ -649,7 +649,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
         except FileNotFoundError as e:
             print(e)
             raise ValueError( f"Looking for *{cfg_pat}* {confs} were matched: " + exp_conf)
-        prev_exp_folder = exp_args["output_dir"]
+        prev_exp_folder = exp_args["load_model_dir"]
         prev_save_path = exp_args.get("save_path","")
         copy_prev_exp = copy_prev_exp or exp_args.get("copy_prev_exp", False)
         exp_conf_name = Path(exp_conf).stem
@@ -843,7 +843,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        prev_folder = Path(prev_exp_folder)
        prev_exp_id = prev_folder.name
        eval_folders = glob.glob(
-               os.path.join(prev_folder.parent, "Eval-" + prev_exp_id + "*no-mask*"))
+               os.path.join(prev_folder.parent, "Eval-" + prev_exp_id + "**"))
        try:
            shutil.copytree(prev_exp_folder, 
                    os.path.join(save_path, Path(prev_exp_folder).name))
@@ -1460,6 +1460,11 @@ def train(**kwargs):
     nsp = 0
     inp_nsp = kwargs.setdefault("num_source_prompts", nsp) 
     source_per_task = kwargs.setdefault("source_per_task", False) 
+    if "SI" in prompts_conf and not data_args.source_prompts:
+        source_per_task = True
+        inp_nsp = 0
+        kwargs["num_source_prompts"] = 0
+
     real_task_names = []
     for name in tasks:
        real_task_name = AutoTask.get_task_name(name)
@@ -1570,14 +1575,15 @@ def train(**kwargs):
     if kwargs.get("adjust_epochs", False): 
         num_epochs = training_args.num_train_epochs
         if data_args.max_train_samples <= 20:
-            num_epochs += 5
+            num_epochs += 4
         if data_args.max_train_samples > 100:
-            num_epochs -= 5
+            num_epochs -= 6
         elif data_args.max_train_samples > 50:
-            num_epochs -= 3
+            num_epochs -= 4
         if prompts_conf in ["SLP","SL"]:
-            num_epochs += 8
+            num_epochs += 2
         training_args.num_train_epochs = num_epochs
+        kwargs["num_train_epochs"] = num_epochs
 
     #if type(data_args.task_name) == list:
     #    model_args.multi_task = True
@@ -2283,7 +2289,7 @@ def train(**kwargs):
                 continue
             elif encoder.is_source:
                 mylogs.bp("learn")
-                if learn_source_prompts:
+                if learn_source_prompts or "com" in encoder.name:
                     if encoder.is_private and not learn_private_prompts:
                         continue
                     if encoder.is_loaded and not learn_loaded_prompts:
@@ -2607,20 +2613,23 @@ def train(**kwargs):
     pvt_prompt_params = []
     mylogs.bp("opt")
     learning_rate = training_args.learning_rate
+    shared_prompt_learning_rate = source_prompt_learning_rate
     if method == "pt" or cross_pt:
         if "learning_rate" in main_vars:
             target_prompt_learning_rate = learning_rate
+        if "shared_prompt_learning_rate" in main_vars:
+            shared_prompt_learning_rate = kwargs.get("shared_prompt_learning_rate", 
+                    source_prompt_learning_rate)
         learning_rate = target_prompt_learning_rate
         for encoder in attn_pt.prompt_encoders:
            para_list =[
                    p for n, p in encoder.named_parameters() if p.requires_grad and n != "A"]
            if para_list: 
                if encoder.is_source and not encoder.is_private:
-                   src_prompt_params.extend(para_list)
-                   #if encoder.name in source_prompts:
-                   #    src_prompt_params.extend(para_list)
-                   #else:
-                   #    shr_prompt_params.extend(para_list)
+                   if not "com" in encoder.name:
+                       src_prompt_params.extend(para_list)
+                   else:
+                       shr_prompt_params.extend(para_list)
                elif encoder.is_private:
                    pvt_prompt_params.extend(para_list)
                else:
@@ -2636,12 +2645,14 @@ def train(**kwargs):
         pvt_prompt_params = set(pvt_prompt_params)
         grouped_params.append({'params': list(src_prompt_params), 
             'lr': source_prompt_learning_rate})
+        grouped_params.append({'params': list(shr_prompt_params), 
+            'lr': shared_prompt_learning_rate})
         grouped_params.append({'params': list(pvt_prompt_params), 
             'lr': private_prompt_learning_rate})
         grouped_params.append({'params': list(tgt_prompt_params), 
             'lr': target_prompt_learning_rate})
         prompt_params = list(src_prompt_params) \
-                + list(tgt_prompt_params) + list(pvt_prompt_params)
+                + list(tgt_prompt_params) + list(shr_prompt_params) + list(pvt_prompt_params)
 
     other_params = all_parameters - set(attn_params) - set(prompt_params)
     other_params = list(other_params)

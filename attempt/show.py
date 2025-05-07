@@ -7,7 +7,7 @@ from statsmodels.formula.api import ols
 from pandas.plotting import table
 # import dataframe_image as dfi
 # from metrics.metrics import do_score
-#import pyperclip
+import pyperclip
 #from metrics.metrics import do_score
 
 from distutils.dir_util import copy_tree, remove_tree
@@ -1787,6 +1787,9 @@ def show_df(df, summary=False):
             if _sw >= left + COLS - 10:
                 left = _sw - 10 
             adjust = False
+        if ch == 25:  # Ctrl+Y is ASCII 25
+            selected_data = df[selected_cols].to_csv(sep='\t', index=False)
+            pyperclip.copy(selected_data)
         if char in ["+","-","*","/"] and prev_char == "x":
             _inp=df.iloc[sel_row]["input_text"]
             _prefix=df.iloc[sel_row]["prefix"]
@@ -2705,6 +2708,8 @@ def show_df(df, summary=False):
             temp_path = "/home/ahmad/temp/"
             comp_path = temp_path + dest_folder
             Path(comp_path).mkdir(parents=True, exist_ok=True)
+            _dir = Path(__file__).parent.parent
+            conf_path = os.path.join(_dir, "confs")
             if char in ["Y"]:
                 if dest_folder and Path(comp_path).exists():
                     # shutil.rmtree(comp_path)
@@ -2749,8 +2754,8 @@ def show_df(df, summary=False):
                     parent = path 
                     pname = Path(path).name
                     expid = Path(path).name
-                    if char in ["U","Y"]:
-                        dest = os.path.join(comp_path, "exp_" + str(prefix) + ".json")
+                    if char in ["U"]:
+                        dest = os.path.join(conf_path, fname + ".json")
                     elif "conf" in fname:
                         dest = os.path.join(home, "MTO", "confs", fname)
                     elif "reval" in fname:
@@ -3796,7 +3801,10 @@ def show_df(df, summary=False):
                 # desired_order = ['xAttr', 'AtLocation', 'ObjectUse', 'xIntent', 'xWant', 'xNeed']
                 desired_order = ['SIL', 'SILP', 'SL','SLP']
 
-                df[filter_col] = pd.Categorical(df[filter_col], categories=desired_order, ordered=True)
+                if filter_col == "prompts_conf":
+                    df[filter_col] = pd.Categorical(df[filter_col], categories=desired_order, ordered=True)
+                if x_col == "prompts_conf":
+                    df[x_col] = pd.Categorical(df[x_col], categories=desired_order, ordered=True)
                 category3_mapping = {
                         'AnswerPrompting': 'AP', 'ChoicePrompting': 'CP',
                         'MaskedAnswerPrompting': 'MAP', 'MaskedChoicePrompting': 'MCP' 
@@ -3815,7 +3823,7 @@ def show_df(df, summary=False):
                     hue_col = selected_cols[3]  if len(selected_cols) > 3 else filter_col
                     g.map_dataframe(sns.lineplot, x=x_col, y=y_col, 
                             hue=hue_col, palette="muted", marker='o')
-                g.set_axis_labels("Templates", 'Mean Accuracy Score')
+                g.set_axis_labels("Configs", 'Mean Accuracy Score')
                 g.set_titles('{col_name}')
                 # plt.xticks(rotation=90)
                 g.add_legend(loc='upper right', title_fontsize=14) 
@@ -4760,14 +4768,17 @@ def show_df(df, summary=False):
             #filter_df = orig_df
             #df = filter_df
             #FID = "fid" 
-            #reset = True
+            reset = True
             cur_files = list(main_df["path"].unique())
-            new_dfs = get_files(root_path, dfname, dftype, summary=True, limit=-1, 
+            new_dfs = get_files(root_path, dfname, dftype, summary=False, limit=-1, 
                     current_files = cur_files)
+            if new_dfs:
+                new_dfs.append(df)
+                main_df = pd.concat(new_dfs)
             #sel_cols = group_sel_cols 
             #save_obj([], "sel_cols", context)
             #save_obj([], "info_cols", context)
-            # hotkey = hk
+            hotkey = hk
         if char == "R" and prev_char == "x":
             df = main_df
             sel_cols = list(df.columns)
@@ -5106,8 +5117,7 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id="parent", current_
             s_dfs.append(df)
             ii += 1
         if len(dfs) > 0:
-            df = pd.concat(dfs, ignore_index=True)
-            return df
+            return dfs
         return None
 
 def start(stdscr):
@@ -5129,7 +5139,7 @@ def start(stdscr):
 
     cur.start_color()
     cur.curs_set(0)
-    # std.keypad(1)
+    std.keypad(1)
     cur.use_default_colors()
 
     colors = [str(y) for y in range(-1, cur.COLORS)]
@@ -5235,8 +5245,9 @@ def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, n
     if not fname:
         fname = [ftype]
     set_app("showdf")
-    data_frame = get_files(path, fname, ftype, summary=summary, limit=limit, file_id= fid)
-    if data_frame is not None:
+    dfs = get_files(path, fname, ftype, summary=summary, limit=limit, file_id= fid)
+    if dfs is not None:
+        data_frame = pd.concat(dfs, ignore_index=True)
         dfname = "merged"
         wrapper(start)
     else:

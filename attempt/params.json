@@ -111,6 +111,7 @@
   "sri":"save_router_image",
   "plr":"prompt_learning_rate",
   "slr":"source_prompt_learning_rate",
+  "shlr":"shared_prompt_learning_rate",
   "vlr":"private_prompt_learning_rate",
   "tlr":"target_prompt_learning_rate",
   "order":"source_prompts_order",
