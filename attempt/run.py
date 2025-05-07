@@ -1460,7 +1460,7 @@ def train(**kwargs):
     nsp = 0
     inp_nsp = kwargs.setdefault("num_source_prompts", nsp) 
     source_per_task = kwargs.setdefault("source_per_task", False) 
-    if "SI" in prompts_conf and not data_args.source_prompts:
+    if prompts_conf and "SI" in prompts_conf and not data_args.source_prompts:
         source_per_task = True
         inp_nsp = 0
         kwargs["num_source_prompts"] = 0
