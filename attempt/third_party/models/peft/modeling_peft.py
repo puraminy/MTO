@@ -509,6 +509,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.anneal_rate = config.anneal_rate
         self.anneal_type = config.anneal_type
         self.temperature = config.temperature
+        self.alpha_raw = nn.Parameter(torch.tensor(0.0))    
 
         self.lambda_entropy = config.lambda_entropy
         self.entropy_loss = 0
@@ -1272,7 +1273,8 @@ class AttentivePromptEncoder(torch.nn.Module):
                     'bts, btsld -> btld', attn_sel_scores, 
                     attend_to_x)
             if compose_method == "wsp1": 
-               soft_prompts = avg_prompts + private_prompt 
+               alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
+               soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
             elif compose_method == "wmp1": 
                soft_prompts = avg_prompts * private_prompt 
             elif compose_method == "wcp1": 
