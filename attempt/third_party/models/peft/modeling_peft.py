@@ -1273,16 +1273,19 @@ class AttentivePromptEncoder(torch.nn.Module):
                     'bts, btsld -> btld', attn_sel_scores, 
                     attend_to_x)
             if compose_method == "wsp1": 
-               alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
-               soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
+               #alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
+               #soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
+               ts = target_shares.reshape(batch_size, 1, 1, 1)
+               soft_prompts = (1 - ts) * avg_prompts + ts * private_prompt 
             elif compose_method == "wmp1": 
                soft_prompts = avg_prompts * private_prompt 
             elif compose_method == "wcp1": 
                soft_prompts = torch.cat([avg_prompts,private_prompt], dim=2)
-            # attn_sel_scores = torch.cat(
-            #       [attn_sel_scores, target_shares.reshape(batch_size, 1, 1)], dim=-1)
-            alpha_scores = alpha.expand(batch_size, 1, 1)  # [B, 1, 1]
-            attn_sel_scores = torch.cat([attn_sel_scores, alpha_scores], dim=-1)
+
+            attn_sel_scores = torch.cat(
+                   [attn_sel_scores, target_shares.reshape(batch_size, 1, 1)], dim=-1)
+            #alpha_scores = alpha.expand(batch_size, 1, 1)  # [B, 1, 1]
+            #attn_sel_scores = torch.cat([attn_sel_scores, alpha_scores], dim=-1)
             attend_to_idx = torch.cat([attend_to_idx, target_idx], dim=-1) 
         elif compose_method == "wmp":
             mylogs.bp("wmp")
@@ -1417,8 +1420,9 @@ class AttentivePromptEncoder(torch.nn.Module):
                     if self.training:
                         tst = self.target_share_temperature
                         # tst = self.temperature
-                        target_shares = RelaxedBernoulli(temperature=tst, 
-                            logits=target_router).rsample()            
+                        target_shares = torch.sigmoid(target_router) # * self.sig_coef) 
+                        #target_shares = RelaxedBernoulli(temperature=tst, 
+                        #    logits=target_router).rsample()            
                     else:
                         target_shares = torch.sigmoid(target_router) # * self.sig_coef) 
                         # target_shares = F.softmax(target_router, dim=-1)
