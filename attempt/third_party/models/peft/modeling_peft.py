@@ -1005,8 +1005,8 @@ class AttentivePromptEncoder(torch.nn.Module):
             assert self.use_private_prompts is True, "use private prompts must be enabled"
             private_prompt = attend_to[:,-1,:,:]
             private_prompt = private_prompt.unsqueeze(1)
-            # attend_to_idx = attend_to_idx[:,:-1] # skip private prompts
-            # attend_to = attend_to[:,:-1,:,:]
+            attend_to_idx = attend_to_idx[:,:-1] # skip private prompts
+            attend_to = attend_to[:,:-1,:,:]
         if compose_method in ["cat"] and self.add_target: # or not self.attend_private:
             mylogs.bp("attcat")
             pass
