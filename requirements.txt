@@ -8,3 +8,4 @@
  deepdiff
  appdirs
  ipdb
+ entmax

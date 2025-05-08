@@ -17,6 +17,7 @@ import numpy as np
 from torch.utils.data.dataset import Dataset
 from typing import Any, Dict, List, Optional, Tuple, Union
 from utils import * 
+from entmax import sparsemax
 
 class PromptComposer(nn.Module):
     def __init__(self, config):
@@ -351,6 +352,8 @@ def normalize_scores(scores, method="soft",
         scores[True] = 1
     elif method == "nothing":
        pass 
+    elif method == "sparse":
+        scores = sparsemax(logits, dim=-1)
     elif method == "direct" or method == "soft" or method == "srelu":
         if is_training:
             #scores=scores / scores.sum(dim=-1, keepdim=True) 
