@@ -353,7 +353,7 @@ def normalize_scores(scores, method="soft",
     elif method == "nothing":
        pass 
     elif method == "sparse":
-        scores = sparsemax(logits, dim=-1)
+        scores = sparsemax(scores, dim=-1)
     elif method == "direct" or method == "soft" or method == "srelu":
         if is_training:
             #scores=scores / scores.sum(dim=-1, keepdim=True) 
