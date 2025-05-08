@@ -164,13 +164,13 @@ class WBCallback(TrainerCallback):
                 np_score[np_score == -10] = 0
 
             rows, cols = np_score.shape
-            cell_size = 0.8  # inches per cell — adjust for your desired resolution
+            cell_count = rows * cols
+            font_scale = max(0.4, min(1.0, 100 / cell_count))
+            cell_size = 2*font_scale  # inches per cell — adjust for your desired resolution
             fig.set_size_inches(cols * cell_size, rows * cell_size)
             ax.set_aspect("equal")
 
             # Font scale adaptive to cell count
-            cell_count = rows * cols
-            font_scale = max(0.4, min(1.0, 100 / cell_count))
             sns.set(font_scale=font_scale)
 
             sns.heatmap(
