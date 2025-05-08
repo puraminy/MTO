@@ -153,7 +153,7 @@ class WBCallback(TrainerCallback):
             scores = [scores]
         mask = None
         #sns.set(font_scale=1.2)
-        #plt.tight_layout()
+        plt.tight_layout()
         for ax, sc in zip(axes, scores):
             np_score = sc.detach().cpu().numpy()
             if mask_zeros:
@@ -165,13 +165,13 @@ class WBCallback(TrainerCallback):
 
             rows, cols = np_score.shape
             cell_count = rows * cols
-            font_scale = max(0.4, min(1.0, 100 / cell_count))
+            #font_scale = max(0.4, min(1.0, 100 / cell_count))
             cell_size = 2*font_scale  # inches per cell — adjust for your desired resolution
-            fig.set_size_inches(cols * cell_size, rows * cell_size)
+            #fig.set_size_inches(cols * cell_size, rows * cell_size)
             ax.set_aspect("equal")
 
             # Font scale adaptive to cell count
-            sns.set(font_scale=font_scale)
+            # sns.set(font_scale=font_scale)
 
             sns.heatmap(
                 np_score,
