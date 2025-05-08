@@ -645,7 +645,10 @@ class AttentivePromptEncoder(torch.nn.Module):
             #    ), device=device).uniform_(-1e-3, 1e-3))
             router = torch.zeros((attend_num, attend_num), device=device)
             route_method = self.route_method
-            if self.bias is not None and self.bias > 0:
+            b = self.bias
+            if type(self.bias) == str and "_" in self.bias:
+                _pos, b = self.bias.split("_")
+            if self.bias is not None and int(b) != 0:
                 i,j,k = 1,1,1
                 first = True
                 mylogs.bp("bias")
