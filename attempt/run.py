@@ -3727,7 +3727,7 @@ def train(**kwargs):
                               mscore = masking_scores[0]
                               #if masking_scores[0]=="m_score": 
                               #   mscore = "mean_rouge" 
-                              task_score = scores[mscore]
+                              task_score = df[mscore]
                               pred_count = 0 # len(set(preds)) # scores[mscore]
                               _preds = set(preds)
                               for g in set(golds):
