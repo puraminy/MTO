@@ -702,7 +702,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.common_prompt_ids = torch.tensor(common_prompt_ids, device=device)
         self.task_prompt_ids = torch.tensor(task_prompt_ids, device=device)
         intrinsic_dim = 200
-        b = self.target_share  # or any other float
+        b = float(self.target_share)  # or any other float
         self.target_router = nn.Parameter(
            torch.full((attend_num,), b, device=device)
         )
