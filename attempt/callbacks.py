@@ -159,18 +159,25 @@ class WBCallback(TrainerCallback):
                 np_score = reduce_consecutive_zeros(np_score)
                 zero_columns = np.where(np.all(np_score == 0, axis=0))[0]
                 mask = np.zeros_like(np_score, dtype=bool)
-                mask[:, zero_columns] = True  # Set mask to False for zero columns
+                mask[:, zero_columns] = True
                 mm = (np_score == -10)
                 np_score[mm] = 0
 
-            fig.set_size_inches(np_score.shape[1], np_score.shape[0])
+            # Dynamically adjust font size
+            cell_count = np_score.shape[0] * np_score.shape[1]
+            font_scale = max(0.5, min(1.2, 100 / cell_count))
+            sns.set(font_scale=font_scale)
+
+            fig.set_size_inches(img_h, img_h)
+            ax.set_aspect("equal")
+
             sns.heatmap(np_score, ax=ax, cmap="crest", annot=annot, 
-                    cbar=cbar, mask=mask, 
-                    vmin = vmin, vmax=vmax,
-                    # annot_kws={'rotation': 90}, 
-                    xticklabels=x_labels,
-                    yticklabels=y_labels,
-                    linewidth=0.5)
+                        cbar=cbar, mask=mask,
+                        vmin=vmin, vmax=vmax,
+                        xticklabels=x_labels,
+                        yticklabels=y_labels,
+                        linewidth=0.5)
+
         #plt.tight_layout()
         mylogs.bp("wand")
         if fpath:
