@@ -3725,8 +3725,8 @@ def train(**kwargs):
                             # TODO make it general not according to task names
                             if True: #"xAttr" in data_args.task_name: 
                               mscore = masking_scores[0]
-                              if masking_scores[0]=="m_score": 
-                                 mscore = "mean_rouge" 
+                              #if masking_scores[0]=="m_score": 
+                              #   mscore = "mean_rouge" 
                               task_score = scores[mscore]
                               pred_count = 0 # len(set(preds)) # scores[mscore]
                               _preds = set(preds)
