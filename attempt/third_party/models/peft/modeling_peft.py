@@ -1003,7 +1003,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             assert self.use_private_prompts is True, "use private prompts must be enabled"
             private_prompt = attend_to[:,-1,:,:]
             private_prompt = private_prompt.unsqueeze(1)
-            attend_to_idx = attend_to_idx[:,:-1] # skip private prompts
+            # attend_to_idx = attend_to_idx[:,:-1] # skip private prompts
             attend_to = attend_to[:,:-1,:,:]
         if compose_method in ["cat"] and self.add_target: # or not self.attend_private:
             mylogs.bp("attcat")
@@ -1050,6 +1050,9 @@ class AttentivePromptEncoder(torch.nn.Module):
             attn_scores = router
         elif self.attn_method == "params":
             attn_scores = router
+            if compose_method in ["wcp1","wsp1","wmp1"]: # or self.ignore_private:
+               attn_scores = router[:,:,:-1]
+               target_shares = torch.sigmoid(router[:,:,-1])
         elif self.attn_method == "rb":
             mylogs.bp("rmconst")
             attn_dist = torch.ones_like(router)
@@ -1225,7 +1228,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             # attn_sel_scores = torch.ones_like(attn_sel_scores, requires_grad=True)
             pass
 
-        target_shares = torch.ones(1, batch_size, device=device)
+        # target_shares = torch.ones(1, batch_size, device=device)
 
         if self.random_source > 0 and not self.training:
             num_cols = attn_sel_scores.size(-1)  
