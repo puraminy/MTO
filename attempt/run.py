@@ -348,7 +348,8 @@ def get_task_sim(target_embs, model):
     for i, t1 in enumerate(target_embs):
         for j, t2 in enumerate(target_embs):
             # Compute pairwise cosine similarity between all tokens
-            sim = F.cosine_similarity(t1.unsqueeze(1), t2.unsqueeze(0), dim=2).mean().item()
+            # sim = F.cosine_similarity(t1.unsqueeze(1), t2.unsqueeze(0), dim=2).mean().item()
+            sim = F.cosine_similarity(t1.unsqueeze(0), t2.unsqueeze(0)).item()
             sim_matrix[i, j] = sim
 
     return sim_matrix
