@@ -153,6 +153,7 @@ class WBCallback(TrainerCallback):
             scores = [scores]
         mask = None
         sns.set(font_scale=1.2)
+        plt.tight_layout()
         for ax, sc in zip(axes, scores):
             np_score = sc.detach().cpu().numpy()
             if mask_zeros:
@@ -160,25 +161,36 @@ class WBCallback(TrainerCallback):
                 zero_columns = np.where(np.all(np_score == 0, axis=0))[0]
                 mask = np.zeros_like(np_score, dtype=bool)
                 mask[:, zero_columns] = True
-                mm = (np_score == -10)
-                np_score[mm] = 0
+                np_score[np_score == -10] = 0
 
-            # Dynamically adjust font size
-            cell_count = np_score.shape[0] * np_score.shape[1]
-            font_scale = max(0.5, min(1.2, 100 / cell_count))
-            sns.set(font_scale=font_scale)
-
-            fig.set_size_inches(img_h, img_h)
+            rows, cols = np_score.shape
+            cell_size = 0.5  # inches per cell — adjust for your desired resolution
+            fig.set_size_inches(cols * cell_size, rows * cell_size)
             ax.set_aspect("equal")
 
-            sns.heatmap(np_score, ax=ax, cmap="crest", annot=annot, 
-                        cbar=cbar, mask=mask,
-                        vmin=vmin, vmax=vmax,
-                        xticklabels=x_labels,
-                        yticklabels=y_labels,
-                        linewidth=0.5)
+            # Font scale adaptive to cell count
+            cell_count = rows * cols
+            font_scale = max(0.4, min(1.0, 100 / cell_count))
+            sns.set(font_scale=font_scale)
 
-        #plt.tight_layout()
+            sns.heatmap(
+                np_score,
+                ax=ax,
+                cmap="crest",
+                annot=annot,
+                cbar=cbar,
+                mask=mask,
+                vmin=vmin,
+                vmax=vmax,
+                xticklabels=x_labels,
+                yticklabels=y_labels,
+                linewidth=0.5,
+                square=True
+            )
+
+            # Optional: reduce tick label size
+            ax.tick_params(axis='both', labelsize=font_scale * 10)
+        
         mylogs.bp("wand")
         if fpath:
             plt.savefig(fpath, format='png')
