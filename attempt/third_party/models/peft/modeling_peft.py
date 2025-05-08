@@ -1427,19 +1427,19 @@ class AttentivePromptEncoder(torch.nn.Module):
                         # target_shares = F.softmax(target_router, dim=-1)
                         # target_shares = RelaxedBernoulli(temperature=0.01, 
                         #    logits=target_router).rsample()            
+            elif self.target_share == -2:
+                top, _ = torch.max(attn_sel_scores, -1) 
+                target_shares = top.transpose(0,1)
+            elif self.target_share == -3:
+                top, _ = torch.max(attn_sel_scores, -1) 
+                target_shares = 1 - top.transpose(0,1)
+            elif self.target_share == -4:
+                top = torch.mean(attn_sel_scores, -1) 
+                target_shares = 1 - top.transpose(0,1)
             elif self.target_share >= 1:
                 target_shares = torch.ones(1, batch_size, device=device)
             else:
                 target_shares = self.target_share * torch.ones(1, batch_size, device=device)
-           if self.target_share == -2:
-                top, _ = torch.max(attn_sel_scores, -1) 
-                target_shares = top.transpose(0,1)
-           elif self.target_share == -3:
-                top, _ = torch.max(attn_sel_scores, -1) 
-                target_shares = 1 - top.transpose(0,1)
-           elif self.target_share == -4:
-                top = torch.mean(attn_sel_scores, -1) 
-                target_shares = 1 - top.transpose(0,1)
         return target_shares
 
     def add_target_prompts(self, target_prompts, soft_prompts, 
