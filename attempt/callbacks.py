@@ -152,8 +152,8 @@ class WBCallback(TrainerCallback):
         if not type(scores) == list:
             scores = [scores]
         mask = None
-        sns.set(font_scale=1.2)
-        plt.tight_layout()
+        #sns.set(font_scale=1.2)
+        #plt.tight_layout()
         for ax, sc in zip(axes, scores):
             np_score = sc.detach().cpu().numpy()
             if mask_zeros:
@@ -164,7 +164,7 @@ class WBCallback(TrainerCallback):
                 np_score[np_score == -10] = 0
 
             rows, cols = np_score.shape
-            cell_size = 0.5  # inches per cell — adjust for your desired resolution
+            cell_size = 0.8  # inches per cell — adjust for your desired resolution
             fig.set_size_inches(cols * cell_size, rows * cell_size)
             ax.set_aspect("equal")
 
