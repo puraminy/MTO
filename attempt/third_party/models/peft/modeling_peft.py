@@ -1312,11 +1312,13 @@ class AttentivePromptEncoder(torch.nn.Module):
             avg_prompts = torch.einsum(
                     'bts, btsld -> btld', s_attn_sel_scores, 
                     s_attend_to_x)
-            if self.target_share == 2 and False:
+            ts = attn_sel_scores[:,:,-1]
+            ts = ts.reshape(batch_size, 1, 1, 1)
+            if self.target_share == 1:
                soft_prompts = avg_prompts + private_prompts 
+            elif self.target_share == 2:
+               soft_prompts = avg_prompts + ts * private_prompts 
             else:
-               ts = attn_sel_scores[:,:,-1]
-               ts = ts.reshape(batch_size, 1, 1, 1)
                soft_prompts = (1 - ts) * avg_prompts + (ts * private_prompts) 
         elif compose_method == "wcp":
             mylogs.bp("wcp")
