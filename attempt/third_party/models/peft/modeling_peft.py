@@ -668,15 +668,15 @@ class AttentivePromptEncoder(torch.nn.Module):
                                     j += 1
                         else:
                             _pos, b = "s", self.bias
-                            if type(self.bias) == str and "-" in self.bias:
-                                _pos, b = self.bias.split("-")
+                            if type(self.bias) == str and "_" in self.bias:
+                                _pos, b = self.bias.split("_")
                             if _pos == "x" or _pos == "s":
                                 router[i, j] = float(b)
                                 j += 1
                         if k > 1:
                             _pos, b = "s", self.bias
-                            if type(self.bias) == str and "-" in self.bias:
-                                _pos, b = self.bias.split("-")
+                            if type(self.bias) == str and "_" in self.bias:
+                                _pos, b = self.bias.split("_")
                             if _pos == "x" or _pos == "p":
                                 router[i, k] = float(b) 
                                 k += 1
