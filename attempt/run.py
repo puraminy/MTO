@@ -3369,14 +3369,16 @@ def train(**kwargs):
                 except Exception as e:
                     met = {mstr:0}
             mm = 0
+            m_score = 0
             for k,v in met.items():
                 df[k] = v
                 df["metric_"+ str(ii)] = v
                 if mm == 0:
-                    df["m_score"] = round(float(v),1) 
+                    df["m_score"] = m_score = round(float(v),1) 
                 mm += 1
             df = auto_task.before_scoring(df)
             scores = do_score(df, "rouge", save_to, use_wandb=use_wandb)
+            scores["m_score"] = m_score 
             auto_task.after_scoring(df, golds, preds)
             return df, scores, golds, preds
 
@@ -3727,7 +3729,7 @@ def train(**kwargs):
                               mscore = masking_scores[0]
                               #if masking_scores[0]=="m_score": 
                               #   mscore = "mean_rouge" 
-                              task_score = df[mscore]
+                              task_score = scores[mscore]
                               pred_count = 0 # len(set(preds)) # scores[mscore]
                               _preds = set(preds)
                               for g in set(golds):
