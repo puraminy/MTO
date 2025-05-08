@@ -189,7 +189,7 @@ class WBCallback(TrainerCallback):
             )
 
             # Optional: reduce tick label size
-            ax.tick_params(axis='both', labelsize=font_scale * 10)
+            # ax.tick_params(axis='both', labelsize=font_scale * 10)
         
         mylogs.bp("wand")
         if fpath:
