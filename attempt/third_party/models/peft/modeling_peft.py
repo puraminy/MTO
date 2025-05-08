@@ -702,9 +702,11 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.common_prompt_ids = torch.tensor(common_prompt_ids, device=device)
         self.task_prompt_ids = torch.tensor(task_prompt_ids, device=device)
         intrinsic_dim = 200
-        self.target_router = nn.Parameter(data=torch.empty((
-            attend_num
-        ), device=device).uniform_(0, 0))
+        b = self.target_share  # or any other float
+        self.target_router = nn.Parameter(
+           torch.full((attend_num,), b, device=device)
+        )
+
 
 
         if self.prompt_tuning:
@@ -1412,7 +1414,7 @@ class AttentivePromptEncoder(torch.nn.Module):
     def get_target_shares(self, attn_sel_scores, target_idx):
         target_shares = None
         if self.target_share is not None:
-            if self.target_share == -1 or self.target_share == -10:
+            if self.target_share == -1 or self.target_share < -4:
                 target_router = self.target_router.unsqueeze(0)
                 target_router = batched_index_select(target_router, 1, target_idx)
                 if self.target_share == -10:
