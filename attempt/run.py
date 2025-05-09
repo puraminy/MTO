@@ -3879,9 +3879,9 @@ def train(**kwargs):
                             if "-" in rm  and mask is not None:
                                 if not test_key in effect_scores:
                                     effect_scores[test_key] = torch.zeros(
-                                        (tlen +1, slen + len(gen_masks) + 1), device=device) 
+                                        (tlen +1, slen + len(gen_masks)), device=device) 
                                     pred_scores[test_key] = torch.zeros(
-                                        (tlen +1, slen + len(gen_masks) + 1), device=device) 
+                                        (tlen +1, slen + len(gen_masks)), device=device) 
 
                                 col,mtype,mlabel = rm.split("-")
                                 if mlabel in ["source","private","target"]:
