@@ -1718,6 +1718,7 @@ def train(**kwargs):
     # Set tokenizer
     #tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     model_name_or_path =  model_args.config_name if model_args.config_name else model_args.model_name_or_path
+    model_name_or_path = model_name_or_path.replace("@","/")
     load_path = kwargs.setdefault("load_path", "")
     if not model_name_or_path.startswith("/") and load_path:
         model_name_or_path = op.join(load_path, model_name_or_path)
