@@ -791,8 +791,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        if len(_vv) < 2:
            assert False, "invalid argument " + str(x) + "|" + str(_vv)
        if not (_vv[0].startswith("@comment") or _vv[0].startswith("@c-")):
-           _vv = _vv[1].strip("#")
-           _vvv = _vv.split("#")
+           _vv = _vv[1].strip("/")
+           _vvv = _vv.split("/")
        else:
            _vvv = [_vv[1]]
           #  continue
@@ -829,7 +829,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
                assert var_name in exp_args, var_name +" must be in experiment variables (config)"
            var_item = var.split("=")[1]
            if not var_name.startswith("comment") or var_name.startswith("c"):
-               var_item = var_item.strip("#").split("#")
+               var_item = var_item.strip("/").split("/")
            var_dict["@" + var_name] = var_item
            _mvars.append(var_name)
        else:
