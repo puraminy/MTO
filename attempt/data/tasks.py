@@ -2485,6 +2485,7 @@ class QNLI(AbstractTask):
     rel_nat = "The logical relation between sentence and question is "
     labels_map = {
          "map":{"0":"entailment", "1":"not_entailment"},
+         "map-d":{"0":"duplicate", "1":"not_duplicate"},
          "yn":{"0":"yes", "1":"no"},
     }
     # labels_map = {"map":{"0":"entails", "1":"irrelated"}
