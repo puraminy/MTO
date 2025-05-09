@@ -3,7 +3,7 @@
   "/2g2":"sst2/imdb/superglue-rte/rte",
   "/glue":"cola/mnli/qnli/rte/stsb/qqp/mrpc/sst2",
   "/pglue2":"cola/mnli/qnli/rte/stsb/mrpc2/mrpc/sst2",
-  "/mglue":"rte/qnli/qqp/mrpc/stsb/sst2",
+  "/mglue":"rte/qnli/qqp/mrpc/mnli/cola",
   "/pglue1":"mnli/qnli/mrpc/mrpc2",
   "tasks":"task_name",
   "t":"task_name",
