@@ -165,7 +165,7 @@ class WBCallback(TrainerCallback):
 
             rows, cols = np_score.shape
             cell_count = rows * cols
-            font_scale = max(0.8, min(1.0, 200 / cell_count))
+            font_scale = max(2.0, min(1.0, 200 / cell_count))
             cell_size = 2*font_scale  # inches per cell — adjust for your desired resolution
             fig.set_size_inches(cols * cell_size, rows * cell_size)
             ax.set_aspect("equal")
@@ -189,7 +189,7 @@ class WBCallback(TrainerCallback):
             )
 
             # Optional: reduce tick label size
-            # ax.tick_params(axis='both', labelsize=font_scale * 10)
+            ax.tick_params(axis='both', labelsize=font_scale * 10)
         
         mylogs.bp("wand")
         if fpath:
