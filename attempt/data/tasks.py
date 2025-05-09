@@ -2486,6 +2486,7 @@ class QNLI(AbstractTask):
     labels_map = {
          "map":{"0":"entailment", "1":"not_entailment"},
          "map-d":{"0":"duplicate", "1":"not_duplicate"},
+         "map-rev":{"0":"not_entailment", "1":"entailment"},
          "yn":{"0":"yes", "1":"no"},
     }
     # labels_map = {"map":{"0":"entails", "1":"irrelated"}
