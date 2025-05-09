@@ -1835,8 +1835,8 @@ def show_df(df, summary=False):
         elif ch == cur.KEY_SHOME:
             left = 0 
         elif ch == cur.KEY_END:
-            # cur_row = len(df) -1
-            show_infos = not show_infos
+            cur_row = len(df) -1
+            # show_infos = not show_infos
         elif ch == cur.KEY_SLEFT:
             cur_row -= ROWS - 4
         elif char == "l" and prev_char == "l":
@@ -1893,8 +1893,9 @@ def show_df(df, summary=False):
                 consts["filter"] = col + "='" + str(val) + "'"
             # cur_df = back.pop()
             backit(df,sel_cols)
-            df = pdf # cur_df.df
-            cond_set[col] = f"(df['{col}'] == '{val}')"
+            cond = f"(df['{col}'] == '{val}')"
+            df = pdf[eval(cond)]
+            hotkey = "Vt"
             group_col = ""
             keep_uniques = False
         elif char == "-":

@@ -1327,6 +1327,8 @@ class AttentivePromptEncoder(torch.nn.Module):
                soft_prompts = avg_prompts + private_prompts 
             elif self.target_share == 2:
                soft_prompts = avg_prompts + ts * private_prompts 
+            elif self.target_share == 3:
+               soft_prompts = avg_prompts + ts * (private_prompts - avg_prompts)
             else:
                soft_prompts = (1 - ts) * avg_prompts + (ts * private_prompts) 
         elif compose_method == "wcp":
