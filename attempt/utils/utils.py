@@ -126,13 +126,14 @@ def strval(inp):
       return inp[1:]
    arr = []
    inp = str(inp)
-   vals = inp.split("@")
+   sep = "@" if "@" in inp else "+"
+   vals = inp.split(sep)
    for val in vals:
        if not val:
            continue
        ret = convert(val)
        arr.append(ret)
-   if len(arr) == 1 and not "@" in inp:
+   if len(arr) == 1 and not sep in inp:
        return arr[0]
    return arr
 
