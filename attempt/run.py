@@ -341,15 +341,15 @@ def get_task_sim2(target_embs, model):
 
     return sim_matrix
 
-def get_task_sim(target_embs, model):
+
+def get_task_sim(target_embs, model=None):  # model not used here
     target_embs = [e.squeeze(0) for k, e in target_embs.items()]
     sim_matrix = torch.zeros(len(target_embs), len(target_embs))
-    
+
     for i, t1 in enumerate(target_embs):
         for j, t2 in enumerate(target_embs):
-            # Compute pairwise cosine similarity between all tokens
-            # sim = F.cosine_similarity(t1.unsqueeze(1), t2.unsqueeze(0), dim=2).mean().item()
-            sim = F.cosine_similarity(t1.unsqueeze(0), t2.unsqueeze(0)).item()
+            min_len = min(t1.size(0), t2.size(0))
+            sim = F.cosine_similarity(t1[:min_len], t2[:min_len], dim=1).mean().item()
             sim_matrix[i, j] = sim
 
     return sim_matrix
