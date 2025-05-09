@@ -341,16 +341,26 @@ def get_task_sim2(target_embs, model):
 
     return sim_matrix
 
+import torch
+import torch.nn.functional as F
 
-def get_task_sim(target_embs, model=None):  # model not used here
+def get_task_sim(target_embs, model=None):
     target_embs = [e.squeeze(0) for k, e in target_embs.items()]
-    sim_matrix = torch.zeros(len(target_embs), len(target_embs))
+    n = len(target_embs)
+    sim_matrix = torch.zeros(n, n)
 
     for i, t1 in enumerate(target_embs):
         for j, t2 in enumerate(target_embs):
-            min_len = min(t1.size(0), t2.size(0))
-            sim = F.cosine_similarity(t1[:min_len], t2[:min_len], dim=1).mean().item()
-            sim_matrix[i, j] = sim
+            # Pairwise cosine similarity matrix
+            pairwise_sims = F.cosine_similarity(t1.unsqueeze(1), t2.unsqueeze(0), dim=2)
+            avg_sim = pairwise_sims.mean().item()
+
+            # Normalization by self-similarity
+            self_sim_1 = F.cosine_similarity(t1.unsqueeze(1), t1.unsqueeze(0), dim=2).mean().item()
+            self_sim_2 = F.cosine_similarity(t2.unsqueeze(1), t2.unsqueeze(0), dim=2).mean().item()
+            norm_factor = (self_sim_1 * self_sim_2) ** 0.5 if self_sim_1 and self_sim_2 else 1.0
+
+            sim_matrix[i, j] = avg_sim / norm_factor
 
     return sim_matrix
 
