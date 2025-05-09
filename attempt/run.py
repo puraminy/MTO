@@ -341,9 +341,6 @@ def get_task_sim2(target_embs, model):
 
     return sim_matrix
 
-import torch
-import torch.nn.functional as F
-
 def get_task_sim(target_embs, model=None):
     target_embs = [e.squeeze(0) for k, e in target_embs.items()]
     n = len(target_embs)
@@ -726,7 +723,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
           #        else:
           #            experiment = ans
           #            save_path = os.path.join(log_path, experiment)
-          if False: #rem:
+          if rem:
                main_folder = save_path
                ans = "yes" #input("Do you want to remove " + main_folder + ":")
                if ans == "yes":
