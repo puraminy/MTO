@@ -3962,8 +3962,8 @@ def train(**kwargs):
                         for eval_folder_name in eval_folders[test_key]:
                             eval_folder = os.path.join(exp_folder, eval_folder_name)
                             save_image(eval_folder, model, 
-                            {"effect_" + spec : scores.round(decimals=2)}, 
-                            # "counts_" + spec : p_scores.round(decimals=2)}, 
+                            {"effect_" + spec : scores.round(decimals=2), 
+                             "counts_" + spec : p_scores.round(decimals=2)}, 
                             spec= "effect_" + spec,
                             title = "effect",
                             mask_zeros = True,

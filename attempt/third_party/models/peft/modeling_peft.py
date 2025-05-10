@@ -1329,6 +1329,8 @@ class AttentivePromptEncoder(torch.nn.Module):
                soft_prompts = avg_prompts + ts * private_prompts 
             elif self.target_share == 3:
                soft_prompts = avg_prompts + ts * (private_prompts - avg_prompts)
+            elif self.target_share == 4:
+               soft_prompts = private_prompts + (avg_prompts - private_prompts)
             else:
                soft_prompts = (1 - ts) * avg_prompts + (ts * private_prompts) 
         elif compose_method == "wcp":
@@ -1646,7 +1648,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                 mask = target_prompts != 0
                 # averaging target prompts in the case that there are shared prompt tokens
                 target_prompts = (target_prompts*mask).sum(dim=0)/mask.sum(dim=0)
-                if self.attn_prompt_tuning and not self.target_share == 1:
+                if self.attn_prompt_tuning: #TODO and not self.target_share == 1:
                     attn_mask = self.attn_mask
                     mylogs.bp("ccc")
                     attn_mat = None

@@ -165,13 +165,10 @@ class WBCallback(TrainerCallback):
 
             rows, cols = np_score.shape
             cell_count = rows * cols
-            font_scale = max(2.0, min(1.0, 200 / cell_count))
-            cell_size = 2*font_scale  # inches per cell — adjust for your desired resolution
+            font_size = max(2.0, min(1.0, 200 / cell_count))
+            cell_size = 2*font_size  # inches per cell — adjust for your desired resolution
             fig.set_size_inches(cols * cell_size, rows * cell_size)
             ax.set_aspect("equal")
-
-            # Font scale adaptive to cell count
-            sns.set(font_scale=font_scale)
 
             sns.heatmap(
                 np_score,
@@ -186,10 +183,11 @@ class WBCallback(TrainerCallback):
                 yticklabels=y_labels,
                 linewidth=0.5,
                 square=True
+                annot_kws={"fontsize": font_size}
             )
 
             # Optional: reduce tick label size
-            ax.tick_params(axis='both', labelsize=font_scale * 10)
+            ax.tick_params(axis='both', labelsize=font_size * 10)
         
         mylogs.bp("wand")
         if fpath:

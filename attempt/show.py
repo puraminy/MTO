@@ -1893,8 +1893,7 @@ def show_df(df, summary=False):
                 consts["filter"] = col + "='" + str(val) + "'"
             # cur_df = back.pop()
             backit(df,sel_cols)
-            cond = f"(df['{col}'] == '{val}')"
-            df = pdf[eval(cond)]
+            df = pdf[pdf[col] == val]
             hotkey = "Vt"
             group_col = ""
             keep_uniques = False
