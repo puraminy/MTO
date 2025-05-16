@@ -333,7 +333,7 @@ def get_prompts_sim(prompt_encoders, target_embs, model):
 
 def get_task_sim2(target_embs, model):
     target_embs = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
-    sim_matrix = torch.zeros(len(target_names), len(target_names))
+    sim_matrix = torch.zeros(len(target_embs), len(target_embs))
     for i, t1  in enumerate(target_embs):
         for j, t2 in enumerate(target_embs):
             sim = F.cosine_similarity(t1.unsqueeze(0), t2.unsqueeze(0)).item()
@@ -341,7 +341,7 @@ def get_task_sim2(target_embs, model):
 
     return sim_matrix
 
-def get_task_sim(target_embs, model=None):
+def get_task_sim(target_embs, model=None, normalize=False):
     target_embs = [e.squeeze(0) for k, e in target_embs.items()]
     n = len(target_embs)
     sim_matrix = torch.zeros(n, n)
@@ -353,11 +353,15 @@ def get_task_sim(target_embs, model=None):
             avg_sim = pairwise_sims.mean().item()
 
             # Normalization by self-similarity
-            self_sim_1 = F.cosine_similarity(t1.unsqueeze(1), t1.unsqueeze(0), dim=2).mean().item()
-            self_sim_2 = F.cosine_similarity(t2.unsqueeze(1), t2.unsqueeze(0), dim=2).mean().item()
-            norm_factor = (self_sim_1 * self_sim_2) ** 0.5 if self_sim_1 and self_sim_2 else 1.0
-
-            sim_matrix[i, j] = avg_sim / norm_factor
+            if normalize:
+                self_sim_1 = F.cosine_similarity(t1.unsqueeze(1), 
+                        t1.unsqueeze(0), dim=2).mean().item()
+                self_sim_2 = F.cosine_similarity(t2.unsqueeze(1), 
+                        t2.unsqueeze(0), dim=2).mean().item()
+                norm_factor = (self_sim_1 * self_sim_2) ** 0.5 if self_sim_1 and self_sim_2 else 1.0
+                sim_matrix[i, j] = avg_sim / norm_factor 
+            else:
+                sim_matrix[i, j] = avg_sim 
 
     return sim_matrix
 
@@ -417,7 +421,7 @@ def map_param(param_map, x, key=False):
         k = k.strip("^")
         pre += "^"
     vm = v
-    if v.startswith("#") or v.startswith("@"):
+    if v.startswith("/") or v.startswith("@"):
         first_char = v[0]  # Store the first character
         key = v[1:]  # Remove the first character
         vm = param_map["/" + key]  # Lookup value in param_map
@@ -598,10 +602,16 @@ def cli():
 @click.option(
     "--new_exp_folder",
     "-to",
-    "-new",
-    default="",
+    default="all",
     type=str,
     help="The name of a new directory for experiment when loading an existing config file"
+)
+@click.option(
+    "--inc_run_id",
+    "-new",
+    "-inc",
+    is_flag=True,
+    help="Whether to increase run id or use the last run id"
 )
 @click.option(
     "--copy_to",
@@ -623,7 +633,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
         debug, version, trial, skip, save_conf, rem, repeat, 
         label, deep_check, merge, copy_prev_exp, 
         reval, test, use_wandb, download_model, max_exp, 
-        new_exp_folder, copy_to, inp_log_path):
+        new_exp_folder, inc_run_id, copy_to, inp_log_path):
    if debug:
        port = "1234"
        if not break_point: break_point = debug
@@ -632,6 +642,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        debugpy.wait_for_client()  # blocks execution until client is attached
    if break_point:
        mylogs.setbp(break_point)
+   if inc_run_id:
+       mylogs.get_run_id(increase = True)
    exclude_list = []
    exp_args = {}
    save_path = ""
@@ -864,19 +876,38 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
                pass
 
 
-   for key,val in var_dict.items():
-       multi = [item for item in val if re.match("multi-(.*)", item)]
-       members = [x.strip("@") for x in val if not x in multi and not "@" in x.strip("@")]
-       if multi:
-           ext = []
-           for m in multi:
-               _, l = m.split("-")
-               l = len(members) if l == "all" else int(l)
-               val.remove(m)
-               comb = itertools.combinations(members, l)
-               ext.extend(["@".join(c) for c in comb])
-           val = ext + val
-           var_dict[key] = val
+   for key,value in var_dict.items():
+       extra = []
+       for val in value:
+           if "multi-" in val or "multir-" in val:
+               first = []
+               second = []
+               use_second = False
+               for m in value:
+                   if m == val:
+                       use_second = True
+                       continue
+                   var = map_param(param_map, "/" + m)
+                   var = [x for x in var.split("/") if x]
+                   if use_second:
+                       second.extend(var)
+                   else:
+                       first.extend(var)
+               _, l = val.split("-")
+               l = len(second) if l == "all" else int(l)
+               if "multir" in val:
+                   comb = all_nonempty_subsets_upto_l(second, l)
+               else:
+                   comb = itertools.combinations(second, l)
+               comb = [c for c in comb]
+               if first:
+                   comb = itertools.product(first, comb)
+                   result = ['@'.join((x, *ys)) for x, ys in comb]
+               else:
+                   result = ['@'.join(x) for x in comb]
+               extra.extend(result)
+       if extra:
+          var_dict[key] = extra
 
    var_names = list(var_dict.keys())
    values = list(var_dict.values())
@@ -1040,11 +1071,11 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
                    _output_dir = label + str(ee)
                    output_dir = os.path.join(save_path, _output_dir)
            if label:
-               expid = experiment.split("/")[-1] + "-" + label + "-" + str(eee)
+               expid = experiment.split("/")[-1] + "-" + label + "-run_" + str(eee)
                expid = expid.strip("-")
                args["expid"] = expid
            else:
-               expid = experiment.split("/")[-1] + "-" + str(eee)
+               expid = experiment.split("/")[-1] + "-run_" + str(eee)
                expid = expid.strip("-")
                args["expid"] = expid
        if repeat:
@@ -1557,6 +1588,7 @@ def train(**kwargs):
     task_args["len_thresh"] = kwargs.get("len_thresh", None) # position of question
     task_args["num_prompts"] = num_prompts 
     task_args["full_prefix"] = kwargs.get("full_prefix",False) # position of question
+    task_args["task_prefix"] = kwargs.get("task_prefix", "letter") # position of question
     task_args["target_prompt_length"] = target_prompt_length 
     task_args["prompt_length"] = kwargs.setdefault("prompt_length", 
                                     adapter_args.num_prompt_tokens)
@@ -1645,10 +1677,12 @@ def train(**kwargs):
     else:
         exp_info["multi_single"] = "single"
 
+    exp_info["num_tasks"] = len(tasks)
     wandb_dir = kwargs.save_path #op.join("logs", experiment)
     Path(wandb_dir).mkdir(parents=True, exist_ok=True)
     experiment = kwargs.experiment
     tags_dict = mylogs.get_tag(tag, kwargs)
+    exp_info["runid"] = mylogs.get_run_id()
     if use_wandb:
         import wandb
         wandb.init(
@@ -1662,7 +1696,7 @@ def train(**kwargs):
           config=tags_dict
         )
         if wandb.run is not None:
-          exp_info["runid"] = wandb.run.id
+          exp_info["wb_runid"] = wandb.run.id
 
     _tag = mylogs.get_tag(tag)  
     exp_info["tag"] = list(_tag.values())
@@ -2045,9 +2079,9 @@ def train(**kwargs):
              rel_sh = REL_TO_SHARED_TOKENS[task_name] if task_name in REL_TO_SHARED_TOKENS else task_name
              task_source_prompts_set[tid].extend(rel_sh.split())
 
-        if kwargs.mapping == "distinct":
+        if kwargs.mapping == "dist":
             attn_pt.max_new_tokens = 3
-        if kwargs.mapping == "distinct" and False: #TODO
+        if kwargs.mapping == "dist" and False: #TODO
             extend_tokenizer(tokenizer, model, label_tokens)
         for name, prompt_tokens in prompts.items():
             extend_tokenizer(tokenizer, model, prompt_tokens)
@@ -3003,6 +3037,7 @@ def train(**kwargs):
         now = datetime.datetime.now(mylogs.tehran)
         now_str = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
         auto_tasks = {}
+        run_id = exp_info["runid"]
         for test_dataset, test_dataset_config in zip(data_args.test_dataset_name, 
                 data_args.test_dataset_config_name): 
             if test_dataset in exclude_from_test_tasks:
@@ -3574,7 +3609,7 @@ def train(**kwargs):
                 ds_conf = "none" if not ds_conf else ds_conf
                 is_train = "train" if training_args.do_train else "eval"
                 save_to = os.path.join(eval_folder,
-                     ds_conf + "_results_" + is_train + "_" + ds_name + \
+                     run_id + "_" + ds_conf + "_" + is_train + "_" + ds_name + \
                      str(kwargs.trial) + "_" + mylogs.now + "_1.tsv")
                 df, scores, golds, preds = evaluate_test(task, test_dataset, save_to, 
                         ds_name, auto_task)
@@ -3613,7 +3648,7 @@ def train(**kwargs):
                             gmax = float(tmax) if tmax != 'none' else None
 
                         mylogs.bp("pic")
-                        rv = "Eval" if not reval else "Reval"
+                        rv =  run_id + "_Eval" if not reval else run_id + "_Reval"
                         if mask is not None:
                             rv += "_mask_"
                         test_num = str(data_args.max_test_samples) 
@@ -3705,7 +3740,7 @@ def train(**kwargs):
                             ds_conf = "none" if not ds_conf else ds_conf
                             is_train = "train" if training_args.do_train else "eval"
                             save_to = os.path.join(eval_folder,
-                                ds_conf + "_results_" + is_train + "_" + ds_name + ".tsv")
+                                run_id + "_" + ds_conf + "_" + is_train + "_" + ds_name + ".tsv")
                             if preview == "test":
                                 print(save_to)
                                 ii += 1
@@ -3843,7 +3878,7 @@ def train(**kwargs):
                                     target_embs = task_tuned_prompts,  
                                     model=model.nested_model)
                             tsim  = get_task_sim(target_embs = task_tuned_prompts,  
-                                    model=model.nested_model)
+                                    model=model.nested_model, normalize = True)
                             if cross_pt:
                                 save_image(eval_folder, model, 
                                         {"score":scores_matrix, "psim":psim, "tsim":tsim}, 
@@ -3881,9 +3916,9 @@ def train(**kwargs):
                             if "-" in rm  and mask is not None:
                                 if not test_key in effect_scores:
                                     effect_scores[test_key] = torch.zeros(
-                                        (tlen +1, slen + len(gen_masks)), device=device) 
+                                        (tlen, slen + len(gen_masks)), device=device) 
                                     pred_scores[test_key] = torch.zeros(
-                                        (tlen +1, slen + len(gen_masks)), device=device) 
+                                        (tlen, slen + len(gen_masks)), device=device) 
 
                                 col,mtype,mlabel = rm.split("-")
                                 if mlabel in ["source","private","target"]:
@@ -3962,8 +3997,8 @@ def train(**kwargs):
                         for eval_folder_name in eval_folders[test_key]:
                             eval_folder = os.path.join(exp_folder, eval_folder_name)
                             save_image(eval_folder, model, 
-                            {"effect_" + spec : scores.round(decimals=2)}, 
-                            # "counts_" + spec : p_scores.round(decimals=2)}, 
+                            {"effect_" + spec : scores.round(decimals=2), 
+                             "counts_" + spec : p_scores.round(decimals=2)}, 
                             spec= "effect_" + spec,
                             title = "effect",
                             mask_zeros = True,
