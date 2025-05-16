@@ -1414,9 +1414,10 @@ def show_df(df, summary=False):
                 else:
                     tdf = df[df[row_id] == row]
                 val=tdf.iloc[0][col]
-                values.append(val)
-                exp=tdf.iloc[0][row_id]
-                exprs.append(exp)
+                if not pd.isna(val):
+                    values.append(val)
+                    exp=tdf.iloc[0][row_id]
+                    exprs.append(exp)
         return exprs, values 
 
 
@@ -3430,7 +3431,14 @@ def show_df(df, summary=False):
                     if "label" in df:
                         _, labels = get_sel_rows(df, col="label", from_main=False) 
                     else:
-                        labels = exprs.copy()
+                        # labels = exprs.copy()
+                        plabels = []
+                        for p in pcols:
+                            _, pp = get_sel_rows(df, col=p, from_main=False, srow=ii) 
+                            if pp:
+                                plabels.append(p)
+                        plabels = "|".join(plabels)
+                        labels = [plabels]*len(exprs)
 
                 _cols = ["pred_text1", "target_text"]
                 for eid, acc, mt, label, prefix in zip(exprs, scores, mask_types, labels, prefixes):
