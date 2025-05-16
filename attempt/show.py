@@ -31,8 +31,9 @@ import seaborn as sns
 from pathlib import Path
 import pandas as pd
 from attempt.win import *
-from mylogs import * 
 from datetime import datetime, timedelta
+import mylogs
+from mylogs import *
 import time
 import json
 from tqdm import tqdm
@@ -47,6 +48,28 @@ from PIL import ImageChops
 #import attempt.metrics.metrics as mets
 import scipy
 import math
+
+def cross_task(df, fname):
+    task_order = ['cola', 'mnli', 'qnli', 'rte', 'stsb', 'qqp', 'mrpc', 'sst2']
+    tasks = [task for task in task_order if task in df.columns]
+    matrix = pd.DataFrame(index=tasks, columns=tasks, dtype=float)
+    for row_task in tasks:
+        for col_task in tasks:
+            if row_task == col_task:
+                continue
+            relevant_rows = df[df[col_task].notna()]
+            values = relevant_rows[row_task].dropna()
+            if not values.empty:
+                matrix.at[row_task, col_task] = values.mean()
+
+    # Plot the heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(matrix.loc[tasks, tasks], annot=True, cmap='viridis', fmt='.1f', linewidths=0.5, linecolor='gray')
+    plt.title('Average Task Accuracy Matrix (Grouped by Seed)')
+    plt.tight_layout()
+    plt.savefig("/home/ahmad/Desktop/CrossPT/cross/" + fname + ".png")
+    plt.show()
+
 def pearson_corrcoef(predictions, targets) -> dict:
     """Computes Pearson correlation coefficient."""
     from data.postprocessors import string_to_float
@@ -658,6 +681,7 @@ def summarize(df, rep_cols=None, score_col=None, rename =True):
     'learn_source_prompts', 'use_private_prompts', 'load_private_prompts'
     ]
     pdf = pdf.drop(columns=[col for col in cols_to_drop if col in df.columns])
+    #pdf = pdf[(pdf.mask_type == "no-mask_keep") | (pdf.mask_type == "no-mask")]
     pdf = pdf.round(2)
     df = pdf.iloc[:-1]
     return df
@@ -1046,7 +1070,7 @@ def show_df(df, summary=False):
         fav_df = pd.read_table(fav_path)
     else:
         fav_df = pd.DataFrame(columns = df.columns)
-    sel_path = os.path.join(home, "atomic2020", "new_test.tsv")
+    sel_path = os.path.join(mylogs.home, "atomic2020", "new_test.tsv")
     if Path(sel_path).exists():
         sel_df = pd.read_table(sel_path)
         if not "sel" in sel_df:
@@ -1092,7 +1116,7 @@ def show_df(df, summary=False):
     if "src_path" in df:
         src_path = df.loc[0, "src_path"]
         if not src_path.startswith("/"):
-            src_path = os.path.join(home, src_path)
+            src_path = os.path.join(mylogs.home, src_path)
     if "pred_text1" in df:
         br_col = df.loc[: , "bert_score":"rouge_score"]
         df['nr_score'] = df['rouge_score']
@@ -1787,9 +1811,18 @@ def show_df(df, summary=False):
             if _sw >= left + COLS - 10:
                 left = _sw - 10 
             adjust = False
+        if ch == 16:  # Ctrl+Y is ASCII 25
+            selected_cols = ["d_seed"] + pcols 
+            name = df.iloc[sel_row]["prompts_conf"].lower()
+            fname =rowinput("file name to save:",name)
+            sdf = df[selected_cols]
+            cross_task(sdf, fname)
         if ch == 25:  # Ctrl+Y is ASCII 25
-            selected_data = df[selected_cols].to_csv(sep='\t', index=False)
-            pyperclip.copy(selected_data)
+            name = df.iloc[sel_row]["prompts_conf"].lower()
+            ff =rowinput("file name to save:",name)
+            selected_data = df[selected_cols].to_csv("/home/ahmad/Desktop/CrossPT/"+ ff +".tsv",
+                    sep='\t', index=False)
+            # pyperclip.copy(selected_data)
         if char in ["+","-","*","/"] and prev_char == "x":
             _inp=df.iloc[sel_row]["input_text"]
             _prefix=df.iloc[sel_row]["prefix"]
@@ -2081,7 +2114,7 @@ def show_df(df, summary=False):
                 dest = os.path.join("routers.png")
                 if char == "p":
                     # fname = rowinput("prefix:", default="image")
-                    ptemp = os.path.join(home, "pictemp", "image.png")
+                    ptemp = os.path.join(mylogs.home, "pictemp", "image.png")
                     if Path(ptemp).is_file():
                         pic2 = Image.open(ptemp)
                         pic = combine_x([pic, pic2])
@@ -2570,13 +2603,13 @@ def show_df(df, summary=False):
             if "conf" in tdf:
                 conf = tdf.iloc[0]["conf"]
                 if not "/" in conf:
-                    conf = os.path.join(home, "results", conf + ".json")
+                    conf = os.path.join(mylogs.home, "results", conf + ".json")
                 meld.append(conf)
             subprocess.Popen(meld)
         elif char == "B":
             if "cfg" in df:
                 _,files = get_sel_rows(df, row_id="cfg", col="cfg", from_main=False)
-                files = [os.path.join(home, "results", c + ".json") for c in files]
+                files = [os.path.join(mylogs.home, "results", c + ".json") for c in files]
                 consts["base"] = files[0]
             else:
                 _,dirs = get_sel_rows(df, col="output_dir")
@@ -2595,7 +2628,7 @@ def show_df(df, summary=False):
         elif char == "t" and False:
             backit(df, sel_cols)
             mode = "cfg"
-            files = glob(os.path.join(home,"results","*.json"))
+            files = glob(os.path.join(mylogs.home,"results","*.json"))
             #for f in files:
             # correct_path(f)
             fnames = [Path(f).stem for f in files]
@@ -2757,11 +2790,11 @@ def show_df(df, summary=False):
                     if char in ["U"]:
                         dest = os.path.join(conf_path, fname + ".json")
                     elif "conf" in fname:
-                        dest = os.path.join(home, "MTO", "confs", fname)
+                        dest = os.path.join(mylogs.home, "MTO", "confs", fname)
                     elif "reval" in fname:
-                        dest = os.path.join(home, "reval", fname)
+                        dest = os.path.join(mylogs.home, "reval", fname)
                     if "png" in fname:
-                        target = os.path.join(home, "MTO", "figs", expid)
+                        target = os.path.join(mylogs.home, "MTO", "figs", expid)
                         target_dir = Path(target)
                         target_dir.mkdir(parents=True, exist_ok=True)
                         for png_file in Path(rpath).rglob('*.png'):
@@ -2770,7 +2803,7 @@ def show_df(df, summary=False):
                         shutil.copy2(js, target_dir)
                     if "all" in fname:
                         folders = glob(os.path.join(str(parent), "Eval-"+ str(expid) + "*"))
-                        results_folder = os.path.join(home,"MTO","results",
+                        results_folder = os.path.join(mylogs.home,"MTO","results",
                                 fname.replace(".json",""))
                         for folder in folders:
                             try:
@@ -2778,7 +2811,7 @@ def show_df(df, summary=False):
                                         results_folder + "/" + Path(folder).name)
                             except FileExistsError:
                                 pass
-                        dest = os.path.join(home, "results", fname)
+                        dest = os.path.join(mylogs.home, "results", fname)
                     if Path(js).is_file():
                         shutil.copyfile(js, dest)
                         correct_path(js, dest, path)
@@ -3047,7 +3080,7 @@ def show_df(df, summary=False):
                     Path(folder).mkdir(exist_ok=True, parents=True)
                     pname = os.path.join(folder, name + ".png")
                     new_im.save(pname)
-            if "ahmad" in home:
+            if "ahmad" in mylogs.home:
                 subprocess.run(["eog", pname])
         elif char in ["o","O"] and prev_char=="x":
             files = [Path(f).stem for f in glob(base_dir+"/*.tsv")]
@@ -3254,7 +3287,7 @@ def show_df(df, summary=False):
         elif char == "m" and "cfg" in df:
             char = ""
             _,files = get_sel_rows(df, row_id="cfg", col="cfg", from_main=False)
-            files = [os.path.join(home, "results", c + ".json") for c in files]
+            files = [os.path.join(mylogs.home, "results", c + ".json") for c in files]
             files.insert(0, "meld")
             subprocess.Popen(files)
         elif char == "m":
@@ -3316,7 +3349,7 @@ def show_df(df, summary=False):
         if cmd.startswith("cp="):
             _, folder, dest = cmd.split("=")
             spath = main_df.iloc[0]["path"]
-            dest = os.path.join(home, "logs", folder, dest)
+            dest = os.path.join(mylogs.home, "logs", folder, dest)
             Path(folder).mkdir(exist_ok=True, parents=True)
             shutil.copyfile(spath, dest)
         if cmd.startswith("w="):
@@ -5008,7 +5041,7 @@ global_cmd = ""
 global_search = ""
 global_summary = False
 root_path = ""
-base_dir = os.path.join(home, "datasets", "comet")
+base_dir = os.path.join(mylogs.home, "datasets", "comet")
 data_frame = None
 
 def get_files(dfpath, dfname, dftype, summary, limit, file_id="parent", current_files=[]):
@@ -5030,7 +5063,8 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id="parent", current_
             for root_file in all_files:
                 # root_file = os.path.join(root,_file)
                 _file = root_file.split("/")[-1]
-                cond = all(s.strip() in root_file for s in dfname)
+                cond = root_file.endswith(dftype)
+                cond = any(s.strip() in root_file for s in dfname)
                 if check_time:
                     ts = os.path.getctime(root_file)
                     ctime = datetime.fromtimestamp(ts)
@@ -5041,11 +5075,12 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id="parent", current_
                         continue
                     matched_files.append((os.path.getctime(root_file), root_file))
         matched_files.sort(reverse=True)
-        if limit > 0:
-            matched_files = matched_files[:limit]
+        # if limit > 0:
+        #   matched_files = matched_files[:limit]
 
         files.extend(path for _, path in matched_files)
         if not files:
+            print(dfname)
             print("No file was selected")
             return
         dfs = []
@@ -5123,7 +5158,7 @@ def get_files(dfpath, dfname, dftype, summary, limit, file_id="parent", current_
 def start(stdscr):
     global info_bar, text_win, cmd_win, std, main_win, colors, dfname, STD_ROWS, STD_COLS
     std = stdscr
-    now = datetime.now()
+    now = mylogs.now
     std.bkgd(' ', cur.color_pair(TEXT_COLOR)) # | cur.A_REVERSE)
     rows, cols = std.getmaxyx()
     set_max_rows_cols(rows, cols) 
@@ -5242,8 +5277,16 @@ def main(ctx, fname, path, fid, ftype, dpy, summary, hkey, cmd, search, limit, n
     global_cmd = cmd
     dfname = fname
     dftype = ftype
-    if not fname:
-        fname = [ftype]
+    runid = mylogs.get_run_id()
+    counter = int(runid.replace("run_",""))
+    if limit > 0 and not fname:
+        fname = []
+        for cc in range(counter, counter - limit, -1):
+           fname.append("run_" + str(cc))
+    elif limit == -2:
+        fname = []
+    elif not fname:
+        fname = [runid] if limit < 0 else []
     set_app("showdf")
     dfs = get_files(path, fname, ftype, summary=summary, limit=limit, file_id= fid)
     if dfs is not None:

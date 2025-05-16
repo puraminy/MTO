@@ -112,6 +112,14 @@ def add_margin(pil_img, top, right, bottom, left, color):
     result.paste(pil_img, (left, top))
     return result
 
+from itertools import chain, combinations, combinations_with_replacement
+
+def all_nonempty_subsets_upto_l(iterable, l):
+    return chain.from_iterable(combinations(iterable, r) for r in range(1, l+1))
+
+def all_multisets_upto_l(iterable, l):
+    return chain.from_iterable(combinations_with_replacement(iterable, r) for r in range(1, l+1))
+
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""

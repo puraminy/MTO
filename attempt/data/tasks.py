@@ -157,8 +157,14 @@ class AbstractTask(abc.ABC):
         self.chpos = task_args.get("chpos",self.chpos)
         self.full_prefix = task_args.get("full_prefix", False)
         self.len_thresh = task_args.get("len_thresh", self.len_thresh)
-        prefix = self.prefix if self.prefix else self.name
-        self.prefix = task_args.get("prefix", prefix)
+        
+        task_letter = chr(ord('a') + task_index)
+        self.prefix = self.prefix if self.prefix else self.name
+        prefix = task_args.get("task_prefix", False)
+        if prefix == "letter":
+           self.prefix = task_letter*3
+        elif prefix:
+            self.prefix = prefix
         self.use_cache_file = self.cache_file 
         if self.cache_file:
             self.use_cache_file = task_args.get("use_cache_file", True)
@@ -174,11 +180,14 @@ class AbstractTask(abc.ABC):
         prompt_config = {}
         self.mapping = task_args.mapping
         if self.labels_list is not None and self.map_labels is True:
-            self.labels_map["distinct"] = {}
-            letter = chr(ord('a') + task_index)
+            self.labels_map["dist"] = {}
+            self.labels_map["tmap"] = {}
+            self.labels_map["mapt"] = {}
             for i, label in enumerate(self.labels_list):
                 orig_label = self.labels_map["map"][label]
-                self.labels_map["distinct"][label] = letter + str(i)
+                self.labels_map["dist"][label] = task_letter + str(i)
+                self.labels_map["tmap"][label] = self.name + "_" + orig_label
+                self.labels_map["mapt"][label] = orig_label + "_" + self.name
 
         if not self.mapping in self.labels_map and self.map_labels:
             self.mapping = "map"
@@ -199,7 +208,7 @@ class AbstractTask(abc.ABC):
         self.counter = {}  # counter for logging items
 
     def get_id(self):
-        return self.prefix
+        return self.name
 
     def after_scoring(self, df, preds, golds):
         print("After Prediction")
@@ -1004,7 +1013,7 @@ class AbstractTask(abc.ABC):
 
         # data["mask"] = mask
         data["end"] = "</s>"
-        data["prefix"] = "task:" + self.name + ":" if self.full_prefix else self.name.upper()+":"
+        data["prefix"] = "task:" + self.prefix + ":" if self.full_prefix else self.prefix.upper()+":"
         data = defdict(data)
         # fill the templates with data
 

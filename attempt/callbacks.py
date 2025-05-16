@@ -134,28 +134,40 @@ class WBCallback(TrainerCallback):
         return img_buf
 
     @staticmethod
-    def save_image(scores, x_labels, y_labels, fpath="", mask_zeros=False,
-            annot=True,title="", df=None, img_h=6.5, cbar=True, vmin=None, vmax=None):
-        # if not title: title = fpath
+    def save_image(
+        scores,
+        x_labels,
+        y_labels,
+        fpath="",
+        mask_zeros=False,
+        annot=True,
+        title="",
+        df=None,
+        img_h=6.5,
+        cbar=True,
+        vmin=None,
+        vmax=None,
+    ):
+        import mylogs  # assuming your custom logging module
         mylogs.bp("save_image")
-        if len(scores) == 2:
-            fig, axes = plt.subplot_mosaic("AB")
-            ax1, ax2 = axes["A"], axes["B"]
-            axes = [ax1, ax2]
-            ax_t = ax2
-        else:
-            fig, axes = plt.subplot_mosaic("A")
-            ax1 = axes["A"]
-            axes = [ax1]
-            ax_t = ax1
-        ax1.set_title(title)
-        if not type(scores) == list:
+
+        if not isinstance(scores, list):
             scores = [scores]
-        mask = None
-        #sns.set(font_scale=1.2)
-        plt.tight_layout()
+
+        # Create figure and axes layout
+        if len(scores) == 2:
+            fig, axes_dict = plt.subplot_mosaic("AB", constrained_layout=True)
+            axes = [axes_dict["A"], axes_dict["B"]]
+        elif len(scores) == 1:
+            fig, axes_dict = plt.subplot_mosaic("A", constrained_layout=True)
+            axes = [axes_dict["A"]]
+        else:
+            raise ValueError("Only supports 1 or 2 score matrices.")
+
         for ax, sc in zip(axes, scores):
             np_score = sc.detach().cpu().numpy()
+
+            mask = None
             if mask_zeros:
                 np_score = reduce_consecutive_zeros(np_score)
                 zero_columns = np.where(np.all(np_score == 0, axis=0))[0]
@@ -165,9 +177,15 @@ class WBCallback(TrainerCallback):
 
             rows, cols = np_score.shape
             cell_count = rows * cols
-            font_size = max(2.0, min(1.0, 200 / cell_count))
-            cell_size = 2*font_size  # inches per cell — adjust for your desired resolution
-            fig.set_size_inches(cols * cell_size, rows * cell_size)
+
+            # Set figure size adaptively
+            fig_width = max(6, cols * 0.8)
+            fig_height = max(6, rows * 0.8)
+            fig.set_size_inches(fig_width, fig_height)
+
+            # Annotation font size scaled to cell count
+            annot_font_size = max(10, min(16, 400 / cell_count))
+
             ax.set_aspect("equal")
 
             sns.heatmap(
@@ -182,19 +200,27 @@ class WBCallback(TrainerCallback):
                 xticklabels=x_labels,
                 yticklabels=y_labels,
                 linewidth=0.5,
-                square=True
-                annot_kws={"fontsize": font_size}
+                square=True,
+                annot_kws={"fontsize": annot_font_size}
             )
 
-            # Optional: reduce tick label size
-            ax.tick_params(axis='both', labelsize=font_size * 10)
-        
+            ax.tick_params(axis='both', labelsize=annot_font_size * 1.2)
+
+        # Remove any unused axes
+        for ax in fig.axes:
+            if ax not in axes:
+                ax.set_visible(False)
+
+        # Title on the first axis
+        axes[0].set_title(title)
+
         mylogs.bp("wand")
+
         if fpath:
-            plt.savefig(fpath, format='png')
+            plt.savefig(fpath, format='png', dpi=300)
         img_buf = io.BytesIO()
-        plt.savefig(img_buf, format='png')
-        plt.close("all")
+        plt.savefig(img_buf, format='png', dpi=300)
+        plt.close(fig)
         return img_buf
 
     def on_epoch_begin(self, args, state, control, **kwargs):
