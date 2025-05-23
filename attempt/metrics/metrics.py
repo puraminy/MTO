@@ -33,7 +33,7 @@ import json
 # from bleurt import score
 # import tensorflow as tf
 
-
+accuracy = "accuracy" # "f1_score_with_invalid"
 TASK_TO_METRICS = {
                    "default":["rouge"],
                    "atomic": ["rouge"],
@@ -49,40 +49,41 @@ TASK_TO_METRICS = {
                    "oWant": ["rouge"],
                    "isBefore": ["rouge"],
                    "isAfter": ["rouge"],
-                   "mrpc": ["accuracy"], #, "f1_score_with_invalid"],
-                   "cola": ["accuracy"], # ['matthews_corrcoef'],
+                   "mrpc": [accuracy], #, "f1_score_with_invalid"],
+                   "cola": [accuracy], # ['matthews_corrcoef'],
                    "stsb": ['pearson_corrcoef', 'spearman_corrcoef'],
+                   "stsb2": [accuracy], # ['matthews_corrcoef'],
                    'sst2': ['accuracy'],
-                   "mnli": ["accuracy"],
-                   "mnli_mismatched": ["accuracy"],
-                   "mnli_matched": ["accuracy"],
-                   "qnli": ["accuracy"],
-                   "rte": ["accuracy"],
-                   "wnli": ["accuracy"],
-                   "tweet-eval": ["accuracy"],
-                   "qqp": ["accuracy"],
-                   "superglue-boolq": ["accuracy"],
-                   "superglue-rte": ["accuracy"],
-                   "superglue-cb": ["accuracy"],
-                   "superglue-copa": ["accuracy"],
+                   "mnli": [accuracy],
+                   "mnli_mismatched": [accuracy],
+                   "mnli_matched": [accuracy],
+                   "qnli": [accuracy],
+                   "rte": [accuracy],
+                   "wnli": [accuracy],
+                   "tweet-eval": [accuracy],
+                   "qqp": [accuracy],
+                   "superglue-boolq": [accuracy],
+                   "superglue-rte": [accuracy],
+                   "superglue-cb": [accuracy],
+                   "superglue-copa": [accuracy],
                    "superglue-multirc": ["f1_score_with_invalid"], # "exact_match"],
-                   "superglue-wic": ["accuracy"],
-                   "superglue-wsc.fixed": ["accuracy"],
+                   "superglue-wic": [accuracy],
+                   "superglue-wsc.fixed": [accuracy],
                    "superglue-record": ["f1_score_with_invalid", "exact_match"],
-                   "multi_nli": ["accuracy"],
+                   "multi_nli": [accuracy],
                    "squad": ["exact_match", "f1_score_with_invalid"],
-                   "snli": ["accuracy"],
+                   "snli": [accuracy],
                    "nq": ["exact_match", "f1_score_with_invalid"],
                    "hotpotqa": ["exact_match", "f1_score_with_invalid"],
                    "searchqa": ["exact_match", "f1_score_with_invalid"],
                    "newsqa": ["exact_match", "f1_score_with_invalid"],
                    "triviaqa": ["exact_match", "f1_score_with_invalid"],
-                   "imdb": ["accuracy"],
-                   "winogrande": ["accuracy"],
-                   "scitail": ["accuracy"],
-                   "amazon_polarity": ["accuracy"],
-                   "yelp_polarity": ["accuracy"],
-                   "paws": ["accuracy"], }
+                   "imdb": [accuracy],
+                   "winogrande": [accuracy],
+                   "scitail": [accuracy],
+                   "amazon_polarity": [accuracy],
+                   "yelp_polarity": [accuracy],
+                   "paws": [accuracy], }
 
 logger = getLogger(__name__)
 
@@ -150,7 +151,51 @@ def spearman_corrcoef(predictions, targets) -> dict:
     return {"spearmanr": "{:.2f}".format(spearman_corrcoef)}
 
 
-def f1_score_with_invalid(predictions, targets) -> dict:
+import numpy as np
+from sklearn.metrics import f1_score, classification_report
+
+def f1_score_with_invalid(predictions, targets, average='macro') -> dict:
+    """
+    Computes F1 score handling invalid predictions.
+    Any prediction not in the set of target labels is considered incorrect.
+
+    Args:
+        predictions: list or array of predictions
+        targets: list or array of true labels
+        average: 'macro', 'micro', 'weighted', or None for per-class scores
+
+    Returns:
+        dict: { "f1": <score> } or { "f1": <macro_score>, "per_class": {...} } if average=None
+    """
+    targets = np.asarray(targets)
+    predictions = np.asarray(predictions)
+
+    unique_labels = np.unique(targets)
+
+    # Identify invalid predictions (i.e., not in the set of labels)
+    invalid_mask = ~np.isin(predictions, unique_labels)
+
+    # Replace invalid predictions with a wrong label (e.g., random incorrect label)
+    # Here we pick the first incorrect label that is not the true label
+    for i in np.where(invalid_mask)[0]:
+        true_label = targets[i]
+        wrong_labels = [label for label in unique_labels if label != true_label]
+        predictions[i] = wrong_labels[0] if wrong_labels else true_label  # fallback
+
+    try:
+        if average is None:
+            per_class = f1_score(targets, predictions, average=None, labels=unique_labels)
+            return {
+                "f1": np.mean(per_class) * 100,
+                "per_class": {str(label): round(score * 100, 2) for label, score in zip(unique_labels, per_class)}
+            }
+        else:
+            return {"f1": round(f1_score(targets, predictions, average=average) * 100, 2)}
+    except:
+        return {"f1": -1}
+
+
+def f1_score_with_invalid_zero_one(predictions, targets) -> dict:
     """Computes F1 score,  with any prediction != 0 or 1 is counted as incorrect.
     Args:
       targets: list of targets, either 0 or 1

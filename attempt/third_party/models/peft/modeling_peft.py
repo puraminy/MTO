@@ -1284,7 +1284,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             if compose_method == "wsp1": 
                #alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
                #soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
-               target_shares = self.get_target_shares(attn_sel_scores, target_idx)
+               target_shares = self.get_target_shares(attn_sel_scores, target_idx, batch_size)
                ts = target_shares.reshape(batch_size, 1, 1, 1)
                soft_prompts = (1 - ts) * avg_prompts + ts * private_prompt 
             elif compose_method == "wmp1": 
@@ -1422,8 +1422,9 @@ class AttentivePromptEncoder(torch.nn.Module):
             soft_prompts = avg_inputs_embeds.unsqueeze(1) + soft_prompts 
         return soft_prompts, attn_sel_scores, attend_to_idx
     
-    def get_target_shares(self, attn_sel_scores, target_idx):
+    def get_target_shares(self, attn_sel_scores, target_idx, batch_size):
         target_shares = None
+        device = attn_sel_scores.device
         if self.target_share is not None:
             if self.target_share == -1 or self.target_share < -4:
                 target_router = self.target_router.unsqueeze(0)
@@ -1462,7 +1463,7 @@ class AttentivePromptEncoder(torch.nn.Module):
        batch_size = soft_prompts.shape[0]
        device = soft_prompts.device
        mylogs.bp("cmm")
-       target_shares = self.get_target_shares(attn_sel_scores, target_idx)
+       target_shares = self.get_target_shares(attn_sel_scores, target_idx, batch_size)
        attn_mask = self.attn_mask
        if not self.training: 
            mylogs.bp("ccc")

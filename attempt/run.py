@@ -341,6 +341,158 @@ def get_task_sim2(target_embs, model):
 
     return sim_matrix
 
+import torch
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
+def visualize_prompts_pca(target_embs, task_names=None, folder="", pool='mean', normalize=True):
+    """
+    Visualizes task prompt embeddings using PCA.
+    
+    Args:
+        target_embs (dict): {task_name: embedding (1, N, D)}
+        task_names (list): list of task names (optional)
+        pool (str): 'mean' or 'flatten' for prompt representation
+        normalize (bool): if True, L2 normalize each vector before PCA
+    """
+    # Convert each prompt into a vector
+    vectors = []
+    labels = []
+
+    for name, emb in target_embs.items():
+        emb = emb.squeeze(0)  # shape: (N, D)
+        if pool == 'mean':
+            vec = emb.mean(dim=0)
+        elif pool == 'flatten':
+            vec = emb.flatten()
+        else:
+            raise ValueError("Invalid pool method: choose 'mean' or 'flatten'")
+        
+        if normalize:
+            vec = F.normalize(vec, p=2, dim=0)
+
+        vectors.append(vec.cpu().numpy())
+        labels.append(name)
+
+    vectors = torch.tensor(vectors).numpy()
+
+    # Apply PCA
+    pca = PCA(n_components=2)
+    reduced = pca.fit_transform(vectors)
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    for i, label in enumerate(labels):
+        plt.scatter(reduced[i, 0], reduced[i, 1], label=label)
+        plt.text(reduced[i, 0]+0.01, reduced[i, 1]+0.01, label)
+
+    plt.title("PCA of Task Prompts")
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    fname = "pred@pca--" + mylogs.now + ".png"
+    fpath = os.path.join(folder ,"img_logs", fname)
+    plt.savefig(fpath)
+
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+
+def visualize_prompts_tsne(target_embs, task_names=None, add_noise=True,perplexity=5,folder=""):
+    """
+    Visualizes prompt embeddings using t-SNE.
+
+    Args:
+        target_embs (dict): {task_name: [prompt_tensor]} where tensor shape is (1, N, D)
+        task_names (list, optional): Names for display. Defaults to keys of target_embs.
+        add_noise (bool): If True, adds small noise to avoid numerical errors in t-SNE.
+        perplexity (int): t-SNE perplexity.
+    """
+    # Step 1: Aggregate vectors
+    vectors = []
+    names = []
+    for name, emb in target_embs.items():
+        emb = emb.squeeze(0)  # (N, D)
+        vec = emb.mean(dim=0)  # (D,)
+        vectors.append(vec.cpu())
+        names.append(name)
+
+    vectors = torch.stack(vectors)  # (num_tasks, D)
+
+    # Step 2: Variance diagnostics
+    stds = vectors.std(dim=0)
+    mean_std = stds.mean().item()
+    print(f"Mean std across dimensions: {mean_std:.6f}")
+    if mean_std < 1e-5:
+        print("⚠️ Warning: Very low variance across prompts. Consider add_noise=True.")
+
+    # Step 3: Add tiny noise (if requested)
+    if add_noise:
+        noise = torch.randn_like(vectors) * 1e-4
+        vectors += noise
+
+    # Step 4: Normalize features before t-SNE
+    scaled = StandardScaler().fit_transform(vectors.numpy())
+
+    # Step 5: Run t-SNE
+    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42)
+    reduced = tsne.fit_transform(scaled)
+
+    # Step 6: Plot
+    plt.figure(figsize=(8, 6))
+    for i, label in enumerate(names if task_names is None else task_names):
+        plt.scatter(reduced[i, 0], reduced[i, 1], label=label)
+        plt.annotate(label, (reduced[i, 0], reduced[i, 1]))
+
+    plt.title("t-SNE Visualization of Prompt Embeddings")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    fname = "pred@tsn--" + mylogs.now + ".png"
+    fpath = os.path.join(folder ,"img_logs", fname)
+    plt.savefig(fpath)
+
+import umap
+
+def visualize_prompts_umap(task_prompts, task_names=None, normalize=True, folder=""):
+    """
+    Visualizes prompt embeddings using UMAP.
+
+    Args:
+        task_prompts (dict): Dictionary of task_name -> embedding tensor (1 x L x D).
+        task_names (list): Optional list of task names for ordering.
+        normalize (bool): Whether to normalize embeddings before UMAP.
+    """
+    # Ensure shape: (num_tasks, L, D)
+    prompt_list = [emb.squeeze(0).reshape(-1).cpu().numpy() for emb in task_prompts.values()]
+    prompt_array = np.stack(prompt_list)
+
+    if normalize:
+        prompt_array = StandardScaler().fit_transform(prompt_array)
+
+    reducer = umap.UMAP(random_state=42, n_neighbors=3, min_dist=0.5)
+    embedding_2d = reducer.fit_transform(prompt_array)
+
+    # Plotting
+    if task_names is None:
+        task_names = list(task_prompts.keys())
+
+    plt.figure(figsize=(8, 6))
+    for i, (x, y) in enumerate(embedding_2d):
+        plt.scatter(x, y, label=task_names[i])
+        plt.text(x + 0.02, y + 0.02, task_names[i], fontsize=9)
+
+    plt.title("UMAP of Prompt Embeddings")
+    plt.xlabel("UMAP 1")
+    plt.ylabel("UMAP 2")
+    plt.grid(True)
+    plt.tight_layout()
+    fname = "pred@umap--" + mylogs.now + ".png"
+    fpath = os.path.join(folder ,"img_logs", fname)
+    plt.savefig(fpath)
+
 def get_task_sim(target_embs, model=None, normalize=False):
     target_embs = [e.squeeze(0) for k, e in target_embs.items()]
     n = len(target_embs)
@@ -677,7 +829,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
         _expid = str(exp_args["expid"]).split("-")[-1] if "expid" in exp_args else "0"
         exp_args["trial"] = str(trial) + "-ret-" + _expid 
         if experiment == "exp":
-            experiment = exp_args["experiment"] + "_" + mylogs.now 
+            experiment = _expid + "_" + mylogs.now 
         if test:
             exp_args["do_train"] = False
             exp_args["do_test"] = True 
@@ -908,7 +1060,6 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
                extra.extend(result)
        if extra:
           var_dict[key] = extra
-
    var_names = list(var_dict.keys())
    values = list(var_dict.values())
    inp_exp_vars = exp_vars
@@ -950,6 +1101,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    # args["full_tag"] = full_tags 
    tot_comb = [dict(zip(var_names, comb)) for comb in itertools.product(*values)]
    ii = len(existing_exps) if not reval else 0 
+   kk = 0
    exps_done = 0
    orig_args = args.copy()
    total = len(tot_comb)
@@ -976,7 +1128,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
    y_labels = []
    exp_number = 1
    exp_output_dir = exp_args["output_dir"]
-   for comb in tot_comb:
+   for counter, comb in enumerate(tot_comb):
        _output_dir = []
        prev_name = ""
        prev_item = ""
@@ -1037,7 +1189,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        if exp_conf and not new_exp_folder:
             output_dir = exp_output_dir 
        if merge:
-           ee = args["expid"]
+           # ee = args["expid"]
+           ee = mylogs.get_run_id(only_num=True)
            exp_file = args[merge]
            _output_dir = label + "-" + str(ee)
            _output_dir = _output_dir.strip("-")
@@ -1055,9 +1208,10 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
                    continue
                print("Merging to ", output_dir)
        else:
-           ee = round(float(args["expid"]))
+           # ee = round(float(args["expid"]))
+           ee = 1 #mylogs.get_run_id(only_num=True)
            eee = ee
-           _output_dir = label + "-" + str(ee)
+           _output_dir = label + "-" + str(ee) + "-" + str(counter)
            _output_dir = _output_dir.strip("-")
            output_dir = os.path.join(save_path, _output_dir)
            #if Path(output_dir).exists() and not repeat:
@@ -1070,14 +1224,14 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
                    ee += 1 
                    _output_dir = label + str(ee)
                    output_dir = os.path.join(save_path, _output_dir)
-           if label:
-               expid = experiment.split("/")[-1] + "-" + label + "-run_" + str(eee)
-               expid = expid.strip("-")
-               args["expid"] = expid
-           else:
-               expid = experiment.split("/")[-1] + "-run_" + str(eee)
-               expid = expid.strip("-")
-               args["expid"] = expid
+           #if label:
+           #    expid = experiment.split("/")[-1] + "-" + label + "-run_" + str(eee)
+           #    expid = expid.strip("-")
+           #    args["expid"] = expid
+           #else:
+           #    # expid = experiment.split("/")[-1] + "-run_" + str(eee)
+           #    # expid =  expid.strip("-")
+           args["expid"] = _output_dir # expid
        if repeat:
           args["expid"] += "-rep"
        args["output_dir"] = "%" + output_dir 
@@ -1086,7 +1240,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            args["load_model_dir"] = output_dir 
        _conf = json.dumps(args, indent=2)
        if preview == "conf":
-           print(f"================ {ii}/{total} =====================")
+           print(f"================ {counter + 1}/{total} =====================")
            print(_conf)
            out_conf_file = os.path.join(save_path, "logs", "exp_" + str(ii) + ".json")
            Path(os.path.join(save_path, "logs")).mkdir(exist_ok = True, parents=True)
@@ -1219,6 +1373,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
 # m3
 @cli.command()
 def train(**kwargs):
+    main_vars = kwargs.setdefault("main_vars",{})
     seed = kwargs.get("seed", 123)
     set_seed(seed)
     global global_x_labels
@@ -1251,7 +1406,6 @@ def train(**kwargs):
     repeat = kwargs.setdefault("repeat",False)
     reval = kwargs.setdefault("reval",False)
     log_var = kwargs.setdefault("log_var","")
-    main_vars = kwargs.setdefault("main_vars",{})
     mylogs.set_args(kwargs.copy())
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments,
                                AdapterTrainingArguments))
@@ -1569,7 +1723,14 @@ def train(**kwargs):
         data_args.data_path = "datasets"
 
     task_args = {}
-    task_args["data_seed"] = data_args.d_seed
+    d_seed = data_args.d_seed
+    if not "d_seed" in main_vars:
+        d_seed = 2
+    task_args["data_seed"] = d_seed
+    input_class = kwargs.setdefault("input_class", "default")
+    if not "input_class" in main_vars:
+        input_class = "default"
+    task_args["input_class"] = input_class
     task_args["map_labels"] = kwargs.setdefault("map_labels", True)
     task_args["samples_per_head"] = kwargs.setdefault("samples_per_head", 3)
     task_args["start_row"] = kwargs.setdefault("start_row", 0)
@@ -3510,6 +3671,13 @@ def train(**kwargs):
         if type(gen_ntp) != list: gen_ntp = [gen_ntp] 
         gen_ntp = [gg for gg in gen_ntp if gg <= num_target_prompts]
 
+        keep_masking_results = False
+        if "keep_masking_results" in main_vars:
+            keep_masking_results = kwargs.get("keep_masking_results", False)
+        if keep_masking_results and not "prompt_masking" in main_vars:
+            kwargs["prompt_masking"] = "keep"
+            main_vars["prompt_masking"] = "keep"
+
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         masking_list = []
         mylogs.bp("genm")
@@ -3589,7 +3757,6 @@ def train(**kwargs):
         kk = 0
         sdf_rows = []
         img_list = []
-        keep_masking_results = kwargs.get("keep_masking_results", False)
         sep_eval = kwargs.get("separate_eval", False)
         if sep_eval: 
             exp_folder = Path(training_args.output_dir).parent.parent
@@ -3879,6 +4046,9 @@ def train(**kwargs):
                                     model=model.nested_model)
                             tsim  = get_task_sim(target_embs = task_tuned_prompts,  
                                     model=model.nested_model, normalize = True)
+                            visualize_prompts_pca(task_tuned_prompts, folder=eval_folder)
+                            #visualize_prompts_tsne(task_tuned_prompts, folder=eval_folder)
+                            #visualize_prompts_umap(task_tuned_prompts, folder=eval_folder)
                             if cross_pt:
                                 save_image(eval_folder, model, 
                                         {"score":scores_matrix, "psim":psim, "tsim":tsim}, 

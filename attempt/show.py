@@ -1724,15 +1724,17 @@ def show_df(df, summary=False):
         #if char in context_map:
         #    context = contexts_map[char] 
         if ch == cur.KEY_NPAGE:
-            left += 20
+            # left += 20
+            cur_row += 20
             adjust = False
-            cur_col += 5
-            ch = RIGHT
+            #cur_col += 5
+            #ch = RIGHT
         if ch == cur.KEY_PPAGE:
-            left -= 20
+            # left -= 20
+            cur_row -= 20
             adjust = False
-            cur_col -= 5
-            ch = LEFT
+            #cur_col -= 5
+            #ch = LEFT
         if ch == SDOWN:
             info_cols_back = info_cols.copy()
             info_cols = []
@@ -2021,7 +2023,7 @@ def show_df(df, summary=False):
             image_keys = "" 
             if char == "o": # and "images" in settings:
                 # image_keys = settings["images"].split("@")
-                image_keys = ["score", "sim"]
+                image_keys = ["pca","umap"]
             elif char == "y":
                 image_keys = ["effect", "score","router"]
                 merge = "horiz"
@@ -2419,7 +2421,8 @@ def show_df(df, summary=False):
             scol = sel_cols[cur_col]
 
             if not selected_cols:
-                cols = ["label", "max_train_samples"]
+                #cols = ["label", "max_train_samples"]
+                cols = sel_cols[cur_col]
 
             if len(cols) > 0:
                 target_col = "All" if "All" in df else "m_score"
@@ -3433,7 +3436,9 @@ def show_df(df, summary=False):
             backit(df, sel_cols)
             eid = df.iloc[sel_row]['eid'] 
             dfs = []
-            if "prefix" in df:
+            context = "cross"
+            df = df.sort_values(by="mask_type", ascending=True)
+            if "prefix" in df and context != "cross":
                 pfx_cols = df["prefix"].unique()
             elif selected_cols or char == "T":
                 pfx_cols = len(df)*[selected_cols[0] if selected_cols else sel_cols[cur_col]]
@@ -3442,7 +3447,7 @@ def show_df(df, summary=False):
                 pfx_cols = pcols
                 indexes = [sel_row]*len(pfx_cols)
             for ii, prefix in zip(indexes, pfx_cols):
-                if "prefix" in df:
+                if "prefix" in df and context != "cross":
                     _, scores = get_sel_rows(df, None, col="rouge_score", from_main=False) 
                     _, prefixes = get_sel_rows(df, None, col="prefix", from_main=False) 
                     exprs = [eid] * len(prefixes)

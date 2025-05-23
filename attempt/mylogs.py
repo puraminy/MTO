@@ -39,7 +39,7 @@ def args(key, default="no_default"):
 def is_debug():
     return main_args["is_debug"]
 
-def get_run_id(filename='id_counter.json', increase=False):
+def get_run_id(filename='id_counter.json', increase=False, only_num=False):
     # Get the directory of the current source file
     base_dir = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(base_dir, filename)
@@ -55,7 +55,7 @@ def get_run_id(filename='id_counter.json', increase=False):
         with open(path, 'w') as f:
             json.dump(data, f)
 
-    return "run_" +  str(data["counter"])
+    return "run_" +  str(data["counter"]) if not only_num else data["counter"]
 
 def get_full_tag(as_str=False):
     return get_tag(main_args["full_tag"], main_args, as_str)
