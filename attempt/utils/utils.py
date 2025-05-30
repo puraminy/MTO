@@ -1,4 +1,6 @@
-from attempt.third_party.models.t5 import T5LayerNorm
+# from attempt.third_party.models.t5 import T5LayerNorm
+from torch.nn import LayerNorm
+from transformers.models.t5.modeling_t5 import T5LayerNorm
 from attempt.adapters import (AutoAdapterConfig, AdapterController, Adapter)
 import os
 import regex as re
@@ -187,31 +189,38 @@ def get_adapter_config(adapter_args, data_args, training_args, config):
     return adapter_config
 
 
-def freeze_params(model: nn.Module):
+def freeze_model_params(model: nn.Module):
     """Set requires_grad=False for each of model.parameters()"""
     for par in model.parameters():
         par.requires_grad = False
 
-def unfreeze_attn_params(model, adapter_args, adapter_config):
+def unfreeze_gate_params(model, adapter_args, adapter_config):
     # update attention related weights.
-    if adapter_config.attn_method == "dot":
+    if adapter_config.gate_method == "dot":
         for n, m in model.named_parameters():
             if "mul_prefix_emb" == n:
                 m.requires_grad = True
 
-    elif adapter_config.attn_method == "linear":
+    elif adapter_config.gate_method == "linear":
         for n, m in model.named_parameters():
             if "encoder.attn_Wa.weight" == n:
                 m.requires_grad = True
             if "prefix_shared" == n and adapter_config.attend_target is True:
                 m.requires_grad = True
 
-    elif adapter_config.attn_method == "rb":
+    if True: #adapter_config.attn_method == "rb" or adapter_config.attn_method == "params":
         for n, m in model.named_parameters():
-            if "encoder.router" == n and adapter_config.learn_attention is True:
+            if "router" in n and adapter_config.learn_attention is True:
                 m.requires_grad = True
 
-    elif adapter_config.attn_method == "sub":
+    if adapter_config.gate_method == "proj":
+        for n, m in model.named_parameters():
+            if "encoder.key_proj.weight" == n and adapter_config.learn_attention is True:
+                m.requires_grad = True
+            if "encoder.query_proj.weight" == n and adapter_config.learn_attention is True:
+                m.requires_grad = True
+
+    if adapter_config.gate_method == "sub":
         for n, m in model.named_parameters():
             if "encoder.attn_W_down.weight" == n and adapter_config.learn_attention is True:
                 m.requires_grad = True
@@ -223,13 +232,12 @@ def unfreeze_attn_params(model, adapter_args, adapter_config):
         for n, m in model.named_parameters():
             if "prefix_shared" == n and adapter_config.attend_target is True:
                 m.requires_grad = True
-    elif adapter_config.attn_method == "concat":
+    if adapter_config.attn_method == "concat":
         for n, m in model.named_parameters():
             if "encoder.attn_Wa.weight" == n or "attn_va" == n:
                 m.requires_grad = True
 
-
-def freeze_model_params(model, adapter_args, adapter_config):
+def unfreeze_params(model, adapter_args, adapter_config, skip_if_contains=None):
     """
     Freezes the model parameters based on the given setting in the arguments.
     Args:
@@ -239,7 +247,6 @@ def freeze_model_params(model, adapter_args, adapter_config):
     # If we are training adapters, we freeze all parameters except the
     # adapter parameters like adapter controllers.
     if adapter_args.train_task_adapters:
-        freeze_params(model)
         for name, sub_module in model.named_modules():
             if isinstance(sub_module, (AdapterController, Adapter)):
                 for param_name, param in sub_module.named_parameters():
@@ -247,20 +254,20 @@ def freeze_model_params(model, adapter_args, adapter_config):
 
     # Unfreezes last linear layer of decoder.
     if adapter_args.unfreeze_lm_head:
-        for param in model.lm_head.parameters():
+        for param in model.nested_model.lm_head.parameters():
             param.requires_grad = True
 
+    if skip_if_contains is None:
+        skip_if_contains = ['adapter', 'lora', 'prefix']  # add others as needed
     # Unfreezes layer norms.
     if adapter_args.unfreeze_layer_norms:
         for name, sub_module in model.named_modules():
-            if isinstance(sub_module, (T5LayerNorm, nn.LayerNorm)):
-                # this will not consider layer norms inside adapters then.
-                if len(name.split(".")) < 7:
-                    for param_name, param in sub_module.named_parameters():
+            if isinstance(sub_module, (LayerNorm, T5LayerNorm)):
+                if not any(skip_token in name.lower() for skip_token in skip_if_contains):
+                    for param in sub_module.parameters():
                         param.requires_grad = True
 
     if adapter_args.prefix_tuning:
-        freeze_params(model)
         if adapter_config.attn_prompt is False:
             for n, m in model.named_parameters():
                 if "prefix_shared" == n:
@@ -269,36 +276,34 @@ def freeze_model_params(model, adapter_args, adapter_config):
                 if "W_weighting" == n:
                     m.requires_grad = True
         else:
-            unfreeze_attn_params(model, adapter_args, adapter_config)
+            unfreeze_gate_params(model, adapter_args, adapter_config)
 
     if adapter_args.prompt_tuning:
-        # freeze_params(model)
-        if adapter_args.freeze_model is True: 
-            for n, m in model.named_parameters():
-                if True: #not "prompt_encoders" in n: 
-                    m.requires_grad = False
         if adapter_config.attn_prompt is True: 
-            unfreeze_attn_params(model, adapter_args, adapter_config)
+            unfreeze_gate_params(model, adapter_args, adapter_config)
 
+    if adapter_args.is_classifier:
+        for n, m in model.named_parameters():
+            if "classifier" in n:
+                m.requires_grad = True
     ## For bitfit we freeze the whole model except for the biases and the final classifier layer.
     if adapter_args.bitfit:
-        freeze_params(model)
         # unfreeze bias terms.
-        for n, p in model.named_parameters():
+        for n, p in model.nested_model.named_parameters():
             if ".bias" in n:
                 p.requires_grad = True
 
         # unfreeze the classifier.
-        for param in model.lm_head.parameters():
+        for param in model.nested_model.lm_head.parameters():
             param.requires_grad = True
         if adapter_args.freeze_bitfit_lm_head:
-            for n, param in model.lm_head.named_parameters():
+            for n, param in model.nested_model.lm_head.named_parameters():
                 if "bias" in n:
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
         if adapter_args.freeze_bitfit_lm_head_all:
-            for n, param in model.lm_head.named_parameters():
+            for n, param in model.nested_model.lm_head.named_parameters():
                 param.requires_grad = False
 
 
@@ -350,8 +355,7 @@ def pad_punctuation(text):
 
 def modify_model_after_init(model, training_args, adapter_args, adapter_config):
     # Freezes model parameters.
-    freeze_model_params(model, adapter_args, adapter_config)
-
+    unfreeze_params(model, adapter_args, adapter_config)
     trainable_params = sum(p.numel()
                            for p in model.parameters() if p.requires_grad)
     logger.info(

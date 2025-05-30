@@ -62,7 +62,7 @@ def check_conflicts(model_args, data_args, training_args, adapter_args, kwargs):
         else:
             assert not adapter_args.prefix_tuning, "Prompt tuning and prefix tuning can't be on at the same time"
             if training_args.do_train:
-                assert training_args.learning_rate < 0.01, "Learning rate "+ str(training_args.learning_rate)  + " is too high for fine tuning"
+                # assert training_args.learning_rate < 0.01, "Learning rate "+ str(training_args.learning_rate)  + " is too high for fine tuning"
                 assert kwargs.opt_type != "sep", "Fine tuning needs regular optimizers such as ada, adam"
 
             if model_args.target_share is not None:

@@ -49,8 +49,31 @@ from PIL import ImageChops
 import scipy
 import math
 
+def line_plot(df2, selected_cols, label):
+    if selected_cols[0] == 'num_target_prompts':
+        df2['num_source_prompts'] = df2['num_target_prompts'] - 1
+        selected_cols[0] = 'num_source_prompts'
+
+    col = selected_cols[0]
+
+    summary2 = df2.groupby(col)['All'].agg(['mean', 'std']).reset_index()
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(summary2[col], summary2['mean'], '-o', label='Mean Performance', color='green')
+    plt.errorbar(summary2[col], summary2['mean'], yerr=summary2['std'], fmt='o', capsize=5, 
+                 ecolor='black', label='Std Dev')
+
+    plt.xlabel(label)
+    plt.ylabel('Accuracy (mean ± std)')
+    #plt.title('Performance vs Number of Source Prompts with Std Dev (Second Dataset)')
+    plt.grid(True)
+    plt.xticks(summary2[col])
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 def cross_task(df, fname):
-    task_order = ['cola', 'mnli', 'qnli', 'rte', 'stsb', 'qqp', 'mrpc', 'sst2']
+    task_order = ['cola', 'mnli', 'qqp1', 'qnli', 'rte', 'stsb', 'qqp', 'mrpc', 'sst2']
     tasks = [task for task in task_order if task in df.columns]
     matrix = pd.DataFrame(index=tasks, columns=tasks, dtype=float)
     for row_task in tasks:
@@ -64,7 +87,7 @@ def cross_task(df, fname):
 
     # Plot the heatmap
     plt.figure(figsize=(10, 8))
-    sns.heatmap(matrix.loc[tasks, tasks], annot=True, cmap='viridis', fmt='.1f', linewidths=0.5, linecolor='gray')
+    sns.heatmap(matrix.loc[tasks, tasks], annot=True, vmax=90, cmap='viridis', fmt='.1f', linewidths=0.5, linecolor='gray')
     plt.title('Average Task Accuracy Matrix (Grouped by Seed)')
     plt.tight_layout()
     plt.savefig("/home/ahmad/Desktop/CrossPT/cross/" + fname + ".png")
@@ -517,9 +540,11 @@ def cat_colors(df,row,col, default=None):
 
 def nu_colors(df,row,col, default=None):
     number = df.iloc[row][col]
-    number = int(number)
-    number = min(number, 4)
-    return HEATMAP[number]
+    if pd.notna(number):
+        number = int(number)
+        number = min(number, 4)
+        return HEATMAP[number]
+    return MSG_COLOR
 
 def time_colors(df,row,col, default=None):
     return TEXT_COLOR #TODO
@@ -859,6 +884,8 @@ def add_cols(df):
         df["bert_score"] = df["bert_score"]*100 
     if True: #"compose_method" in df:
         df["expid"] = df["exp_name"].str.split("-").str[1]
+        # if not "expid" in df:
+        df["expid"] = df["expid"].astype(str).str.replace("_num", "", regex=False)
         df["expname"] = df["exp_name"].str.split("-").str[1]
         df["ftag"] = df["folder"].str.split("/").str[-1]
         df["ftag"] = df["ftag"].str.split("_").str[0]
@@ -866,7 +893,7 @@ def add_cols(df):
         #df["model_base"] = df["model_name_or_path"].apply(lambda x: '-'.join(x.split('-')[1:2] + x.split('-')[-2:]))
 
     if False: #"expid" in df:
-        df["fexpid"] = df["expid"]
+        df["expid"] = df["expid"]
         df["expname"] = df["expid"].str.split("-").str[0]
         df["expname"] = df["expname"].str.split("_").str[0]
         df["expid"] = df["expid"].str.split("-").str[1]
@@ -1816,16 +1843,20 @@ def show_df(df, summary=False):
             adjust = False
         if ch == 16:  # Ctrl+Y is ASCII 25
             selected_cols = ["d_seed"] + pcols 
-            name = df.iloc[sel_row]["prompts_conf"].lower()
+            name = ""
+            if "prompts_conf" in df:
+                name = df.iloc[sel_row]["prompts_conf"].lower()
             fname =rowinput("file name to save:",name)
             sdf = df[selected_cols]
             cross_task(sdf, fname)
         if ch == 25:  # Ctrl+Y is ASCII 25
-            name = df.iloc[sel_row]["prompts_conf"].lower()
-            ff =rowinput("file name to save:",name)
-            selected_data = df[selected_cols].to_csv("/home/ahmad/Desktop/CrossPT/"+ ff +".tsv",
-                    sep='\t', index=False)
-            # pyperclip.copy(selected_data)
+            ff = "tt-" + mylogs.now # df.iloc[sel_row]["prompts_conf"].lower()
+            #ff =rowinput("file name to save:", ff)
+            selected_data = df[selected_cols]
+            #.to_csv("/home/ahmad/Desktop/CrossPT/"+ ff +".tsv",
+            #        sep='\t', index=False)
+            data_string = selected_data.to_csv(sep='\t', index=False) 
+            pyperclip.copy(data_string)  # Copy to clipboard
         if char in ["+","-","*","/"] and prev_char == "x":
             _inp=df.iloc[sel_row]["input_text"]
             _prefix=df.iloc[sel_row]["prefix"]
@@ -1935,9 +1966,9 @@ def show_df(df, summary=False):
             keep_uniques = False
         elif char == "-":
             backit(df, sel_cols)
-            col_to_ignore = sel_cols[cur_col]
+            col_to_ignore = [sel_cols[cur_col]] if not selected_cols else selected_cols
             row_values = df.iloc[sel_row]
-            ignore_cols = [col_to_ignore]  + pcols + ["time", "All","exp","expid","eid"]  
+            ignore_cols = col_to_ignore  + pcols + ["time", "All","exp","expid","eid"]  
             # Create mask: rows identical in all non-ignored columns
             #check_cols=[col for col in sel_cols if col not in ignore_cols and col in main_vars]
             check_cols = [col for col in sel_cols if col not in ignore_cols]
@@ -2768,15 +2799,16 @@ def show_df(df, summary=False):
                 tdf = main_df[main_df.eid == exp]
                 prefix=tdf.iloc[0]["expname"]
                 expid=tdf.iloc[0]["expid"]
-                expid = expid.split("_")[0]
+                # expid = expid.split("_")[0]
                 # path=tdf.iloc[0]["output_dir"]
                 rpath=tdf.iloc[0]["folder"]
                 print(rpath, file=adr)
-                if not str(expid).isnumeric():
-                    expid=Path(rpath).stem
+                #if not str(expid).isnumeric():
+                #    expid=Path(rpath).stem
                 path = str(Path(rpath).parent) # + "/" + str(expid)
                 # js = os.path.join(path,"conf_" + expid + ".json")
-                js = os.path.join(path, expid, "exp.json")
+                js = os.path.join(path, str(expid), "exp.json")
+                assert Path(js).is_file(), js + " doesn't exist"
                 fname = "conf_tmp_"
                 if char == "Y":
                     compose=tdf.iloc[0]["compose_method"]
@@ -3269,6 +3301,7 @@ def show_df(df, summary=False):
             sel_rows = []
             selected_cols = []
             dot_cols = {}
+            cond_set = {}
             keep_cols = []
             consts = {}
             visual_mode = False
@@ -3823,7 +3856,10 @@ def show_df(df, summary=False):
 
             plt.tight_layout()
             plt.show()
-        if cmd.startswith("bar") or cmd.startswith("line"):
+        if cmd  == "line":
+            label = rowinput("X Label:")
+            line_plot(df[selected_cols], selected_cols, label)
+        elif cmd.startswith("bar") or cmd.startswith("line"):
             show_extra = True
             consts["columns"] = sel_cols 
             if len(selected_cols) < 3:

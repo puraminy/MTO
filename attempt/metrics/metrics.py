@@ -62,6 +62,8 @@ TASK_TO_METRICS = {
                    "wnli": [accuracy],
                    "tweet-eval": [accuracy],
                    "qqp": [accuracy],
+                   "qqp1": [accuracy],
+                   "qqp2": [accuracy],
                    "superglue-boolq": [accuracy],
                    "superglue-rte": [accuracy],
                    "superglue-cb": [accuracy],
@@ -858,4 +860,4 @@ def do_score(df, scorers, save_path=None, reval=False, scores_to_image=False, us
     #   wandb.run.summary["test_bert"] = test_bert
     #   wandb.run.summary["num_preds"] = num_preds 
 
-    return ret_scores
+    return df, ret_scores

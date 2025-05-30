@@ -1059,9 +1059,13 @@ class AbstractTask(abc.ABC):
         if (self.mapping in self.labels_map and self.labels_map[self.mapping]):
             labels_list = []
             for label in self.labels_list:
-                mapped_label = self.labels_map[self.mapping][label]
-                labels_list.append(mapped_label)
-                choice_list.append(label + ":" + mapped_label) 
+                if self.map_labels: 
+                    mapped_label = self.labels_map[self.mapping][label]
+                    labels_list.append(mapped_label)
+                    choice_list.append(label + ":" + mapped_label) 
+                else:
+                    labels_list.append(label)
+                    choice_list.append(label)
 
             if self.map_labels:
                 tt = []
@@ -2362,6 +2366,20 @@ class QQP(AbstractTask):
         tgt_texts = [str(example['label'])]
         return self.seq2seq_format(src_texts, tgt_texts, prefix)
 
+class QQP1(QQP):
+    name = "qqp1"
+    task_name = "qqp"
+    start_row = 200
+    labels_map = {
+            "map": {"0":"not_equivalent","1":"equivalent"},
+        }
+
+class QQP2(QQP):
+    name = "qqp2"
+    task_name = "qqp"
+    labels_map = {
+            "map": {"0":"not_repeated","1":"repeated"}
+        }
 
 class MNLI(AbstractTask):
     name = "mnli"
@@ -2952,6 +2970,8 @@ TASK_MAPPING = OrderedDict(
         ('sst2', SST2),
         ('imdb', IMDB),
         ('qqp', QQP),
+        ('qqp1', QQP1),
+        ('qqp2', QQP2),
         ('stsb', STSB),
         ('stsb2', STSB2),
         ('qnli', QNLI),

@@ -19,180 +19,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from utils import * 
 from entmax import sparsemax
 
-class PromptComposer(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        
-        # Initialize components based on config
-        self._init_attention_mechanism()
-        self._init_composition_methods()
-        self._init_normalization()
-        
-    def _init_attention_mechanism(self):
-        """Initialize attention/scoring components"""
-        if self.config.attn_method == "rb":
-            self.router = nn.Parameter(torch.randn(
-                self.config.num_tasks, self.config.num_sources))
-        elif self.config.attn_method == "gated":
-            # Gating network for MoE
-            self.gate = nn.Sequential(
-                nn.Linear(self.config.model_dim, self.config.num_sources),
-                nn.Softmax(dim=-1))
-    
-    def _init_composition_methods(self):
-        """Initialize components for different composition methods"""
-        if "lin" in self.config.compose_method:
-            self.comp_linear = nn.Linear(
-                self.config.num_sources * self.config.src_prompt_dim * self.config.model_dim,
-                self.config.num_targets * self.config.model_dim)
-        
-        if "sub" in self.config.compose_method:
-            # Low-rank adaptation style composition
-            self.attn_W_down = nn.Linear(self.config.model_dim, self.config.rank)
-            self.attn_W_up = nn.Linear(self.config.rank, self.config.model_dim)
-    
-    def _init_normalization(self):
-        """Initialize normalization components"""
-        self.layer_norm = nn.LayerNorm(self.config.model_dim)
-    
-    def forward(self, inputs_embeds, src_prompts, source_idx=None, 
-                target_idx=None, task_ids=None, task=""):
-        # Input processing
-        processed_inputs = self._process_inputs(inputs_embeds)
-        
-        # Prompt selection and attention
-        attn_scores, attend_to = self._compute_attention(
-            processed_inputs, src_prompts, source_idx, target_idx, task_ids)
-        
-        # Prompt composition
-        composed_prompts = self._compose_prompts(
-            attn_scores, attend_to, src_prompts)
-        
-        return composed_prompts, attn_scores, source_idx
-    
-    def _process_inputs(self, inputs_embeds):
-        """Process input embeddings for attention computation"""
-        if self.config.attend_input:
-            pool = nn.AdaptiveMaxPool1d(self.config.src_prompt_dim)
-            return pool(inputs_embeds.permute(0,2,1)).permute(0,2,1)
-        return None
-    
-    def _compute_attention(self, processed_inputs, src_prompts, 
-                          source_idx, target_idx, task_ids):
-        """Compute attention scores between prompts and inputs"""
-        batch_size = src_prompts.size(0)
-        
-        if self.config.attn_method == "const":
-            return self._constant_attention(batch_size, target_idx, source_idx)
-        
-        elif self.config.attn_method == "gated":
-            # MoE-style gating
-            query = processed_inputs.mean(dim=1) if processed_inputs is not None else src_prompts.mean(dim=(1,2))
-            return self.gate(query).unsqueeze(1), src_prompts
-        
-        elif self.config.attn_method == "cross_attn":
-            # Cross-attention between input and prompts
-            return self._cross_attention(processed_inputs, src_prompts)
-        
-        elif self.config.attn_method == "rb":
-            return self._routing_attention(batch_size, target_idx, source_idx)
-        
-        else:
-            raise ValueError(f"Unknown attention method: {self.config.attn_method}")
-    
-    def _compose_prompts(self, attn_scores, attend_to, src_prompts):
-        """Compose final prompts using selected method"""
-        method = self.config.compose_method
-        
-        if method in ["wavg", "mwavg"]:
-            return self._weighted_average(attn_scores, attend_to)
-        
-        elif method in ["wsp", "wmp", "wcp"]:
-            return self._weighted_operation(
-                attn_scores, attend_to, src_prompts, 
-                op=method.replace("w", ""))
-        
-        elif method in ["pool", "mpool"]:
-            return self._pooling_composition(attend_to, method)
-        
-        elif method == "lin":
-            return self._linear_composition(attend_to)
-        
-        elif method == "sub":
-            return self._lowrank_composition(attend_to)
-        
-        else:
-            raise ValueError(f"Unknown composition method: {method}")
-    
-    # --- Composition Methods ---
-    def _weighted_average(self, attn_scores, attend_to):
-        """Standard weighted average composition"""
-        return torch.einsum('bts,btsld->btld', attn_scores, attend_to)
-    
-    def _weighted_operation(self, attn_scores, attend_to, src_prompts, op):
-        """Weighted operations (sum/mul/concat) with private prompt"""
-        base = torch.einsum('bts,btsld->btld', 
-                          attn_scores[:,:,:-1], 
-                          attend_to[:,:,:-1])
-        private = src_prompts[:,-1].unsqueeze(1)
-        
-        if op == "sp":  # weighted sum
-            return base + private
-        elif op == "mp":  # weighted multiply
-            return base * private
-        elif op == "cp":  # weighted concat
-            return torch.cat([base, private], dim=2)
-    
-    def _pooling_composition(self, attend_to, method):
-        """Pooling-based composition (avg or max)"""
-        pool = nn.AdaptiveMaxPool1d(1) if "mpool" in method else nn.AdaptiveAvgPool1d(1)
-        x = attend_to.flatten(start_dim=3).permute(0,1,3,2)
-        return pool(x).squeeze(-1).view_as(attend_to[:,:,:1])
-    
-    def _linear_composition(self, attend_to):
-        """Neural network-based composition"""
-        x = attend_to.flatten(start_dim=2)
-        return self.comp_linear(x).view(
-            attend_to.size(0), attend_to.size(1), -1, self.config.model_dim)
-    
-    def _lowrank_composition(self, attend_to):
-        """Low-rank adaptation style composition"""
-        x = self.attn_W_down(attend_to)
-        return self.attn_W_up(x)
-    
-    # --- Attention Variants ---
-    def _constant_attention(self, batch_size, target_idx, source_idx):
-        """Fixed uniform attention"""
-        router = torch.ones(target_idx.size()[1], source_idx.size()[1], 
-                          device=target_idx.device)
-        return router.repeat(batch_size, 1, 1), None
-    
-    def _routing_attention(self, batch_size, target_idx, source_idx):
-        """Routing-based attention"""
-        router = torch.zeros(target_idx.size(1), source_idx.size(1),
-                           device=target_idx.device)
-        router = router.repeat(batch_size, 1, 1)
-        
-        for i in range(batch_size):
-            router[i] = self.router[target_idx[i].reshape(-1,1), 
-                                  source_idx[i]]
-        
-        if self.training:
-            return RelaxedBernoulli(logits=router).rsample(), None
-        return router, None
-    
-    def _cross_attention(self, processed_inputs, src_prompts):
-        """Cross-attention between inputs and prompts"""
-        # Use first prompt token as query
-        queries = src_prompts[:,:,0]
-        keys = processed_inputs if processed_inputs is not None else src_prompts
-        
-        # Scaled dot-product attention
-        scores = torch.einsum('btd,bsd->bts', queries, keys) / math.sqrt(queries.size(-1))
-        return torch.softmax(scores, dim=-1), src_prompts
-
-
 class AnnealLambda:
     def __init__(self, module, lambda_start=0.0, lambda_max=0.1, warmup_steps=5000, target_entropy=0.5, entropy_tolerance=0.1):
         self.module = module
@@ -564,14 +390,13 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.attn_tuning = attn_tuning
         self.mul_prefix_emb = mul_prefix_emb
         self.attn_method = config.attn_method
-        self.use_composer = config.use_composer
+        self.gate_method = config.gate_method
         self.model_dim = model_dim
         self.out_dim = config.prompt_out_dim if config.prompt_out_dim > 0 else model_dim
         self.shared_attn = shared_attn
         self.learned_temperature = learned_temperature
         self.target_task_id = None
         self.task_names = None
-        self.composer = None
         if self.learned_temperature is True:
             # The code causes error; need to fix a bug.
             # RuntimeError: Trying to backward through the graph a second time (or directly access saved variables after they have already been freed). Saved intermediate values of the graph are freed when you call .backward() or autograd.grad(). Specify retain_graph=True if you need to backward through the graph a second time or if you need to access saved variables after calling backward
@@ -582,10 +407,10 @@ class AttentivePromptEncoder(torch.nn.Module):
         if self.prefix_tuning:
             self.prefix_dim = adapter_config.prefix_dim
         if True: #self.append_attn_prefix: # or self.prompt_tuning:
-            if self.attn_method == "linear" or self.compose_method == "lin":
+            if self.gate_method == "linear" or self.compose_method == "lin":
                 self.attn_Wa = nn.Linear(
                     self.model_dim, self.model_dim, bias=False)
-            if self.attn_method == "sub" or self.compose_method == "sub":
+            if self.gate_method == "sub" or self.compose_method == "sub":
                 self.attn_W_down = nn.Linear(self.model_dim, 300, bias=False)
                 self.attn_W_up = nn.Linear(300, self.model_dim, bias=False)
                 self.attn_non_linear = nn.SiLU()
@@ -594,7 +419,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.adapter_config = adapter_config
 
     def set_encoders(self, prompt_encoders, source_prompts, 
-            src_prompt_dim, prompt_dim, tasks = None):
+            src_prompt_dim, prompt_dim, pvt_prompt_dim =None, tasks = None):
         self.task_names = tasks
         mylogs.bp("set")
         self.prompt_encoders = torch.nn.ModuleList(prompt_encoders)
@@ -607,7 +432,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.attn_mask_learned = torch.zeros(
             (attend_num, attend_num), device=device) 
         self.src_prompt_dim = src_prompt_dim
-
+        self.pvt_prompt_dim = pvt_prompt_dim
+        self.num_tasks = len(tasks)
 
         self.prompt_names = ["input"] + [x.name for x in src_tgt_encoders]
         self.num_src_encoders = 0
@@ -698,8 +524,6 @@ class AttentivePromptEncoder(torch.nn.Module):
         }
         self.layer_norm_attn = nn.LayerNorm(normalized_shape=self.num_src_encoders) 
         comp_config = dotdict(comp_config.copy())
-        if self.use_composer is True:
-            self.composer = PromptComposer(comp_config)
         self.attn_mask_orig = self.attn_mask.clone()
         self.source_encoders_idx = torch.tensor(src_list, device=device)
         self.target_encoders_idx = torch.tensor(tgt_list, device=device)
@@ -709,11 +533,11 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.task_prompt_ids = torch.tensor(task_prompt_ids, device=device)
         intrinsic_dim = 200
         if self.target_share is not None:
-            b = float(self.target_share)  # or any other float
+            b = 0 # self.target_share  # or any other float
             #self.target_router = nn.Linear(..., bias=True)
             #self.target_router.bias.data.fill_(-2.0)
             self.target_router = nn.Parameter(
-               torch.full((attend_num,), b, device=device)
+               torch.full((attend_num,), float(b), device=device)
             )
 
         if self.prompt_tuning:
@@ -913,21 +737,20 @@ class AttentivePromptEncoder(torch.nn.Module):
 
     ################# MyCode fffffffffff
     def attend_input_score(self, inputs_embeds, # src_prompts, 
-            attend_to, source_idx=None, 
-            target_idx =None, task_ids=None, task="", att_mask=None):
+            attend_to, att_mask=None):
         batch_size = inputs_embeds.shape[0]
         avg_attend_for = self.get_avg_inputs_embeds(inputs_embeds, att_mask)
         avg_attend_to, _ = torch.max(attend_to, 2)
-        if self.attn_method == "dot":
+        if self.gate_method == "dot":
             x = torch.transpose(avg_attend_to, 1,2)
             attn_scores = avg_attend_for.bmm(x)
-        elif self.attn_method == "linear":
+        elif self.gate_method == "linear":
             x = self.attn_Wa(avg_attend_to)
             x = self.layer_norm(x)
             x = torch.transpose(x, 1,2)
             attn_scores = avg_attend_for.bmm(
                 x) / self.temperature
-        elif self.attn_method == "sub":
+        elif self.gate_method == "sub":
             x = self.attn_W_down(avg_attend_to)
             x = self.attn_non_linear(x)
             x = self.attn_W_up(x)
@@ -937,7 +760,12 @@ class AttentivePromptEncoder(torch.nn.Module):
             attn_scores = avg_attend_for.bmm(
                 x) / self.temperature
         # implement token level model
-        elif self.attn_method == "token":
+        elif self.gate_method == "proj":
+            query = self.query_proj(avg_attend_to)  # [B, 1, D]
+            key = self.key_proj(avg_attend_for)       # [B, N, D]
+              # Project query and key
+            attn_scores = (torch.matmul(query, key.transpose(-1, -2)) / math.sqrt(self.model_dim)) #self.temperature  # [B, 1, N]
+        elif self.gate_method == "token":
             x = self.attn_W_down(avg_attend_to)
             x = self.attn_non_linear(x)
             x = self.attn_W_up(x)
@@ -948,7 +776,9 @@ class AttentivePromptEncoder(torch.nn.Module):
         else:
             raise NotImplementedError
 
-        return attn_scores 
+        alpha = torch.sigmoid(attn_scores).view(batch_size)  # [B]
+        return alpha
+
     def get_avg_inputs_embeds(self, input_embeds, attention_mask):
         if attention_mask is not None:
             mask = attention_mask.unsqueeze(-1).float()  # [B, L, 1]
@@ -962,6 +792,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         return avg_inputs_embeds
 
     def attend_prompts(self, inputs_embeds, src_prompts, 
+            pvt_prompts=None, 
             source_idx=None, num_targets=1, 
             target_idx =None, task_ids=None, attn_mat=None, att_mask=None, task=""):
         #avg_inputs_embeds, _ = torch.max(inputs_embeds, 1)
@@ -1008,9 +839,14 @@ class AttentivePromptEncoder(torch.nn.Module):
             if "gen_cmm" in self.gen_conf and self.gen_conf["gen_cmm"] is not None: 
                 compose_method = self.gen_conf["gen_cmm"]
 
-        if compose_method in ["wcp1","wsp1","wmp1"]: # or self.ignore_private:
+        if compose_method in ["wcp1","wsp1","wmp1","catp"]: # or self.ignore_private:
             assert self.use_private_prompts is True, "use private prompts must be enabled"
             private_prompt = attend_to[:,-1,:,:]
+            private_idx = attend_to_idx[:,-1] 
+            if pvt_prompts is not None:
+                private_prompt = torch.stack(
+                    [pvt_prompts[int(idx.item())] for idx in private_idx], dim=0
+                )
             private_prompt = private_prompt.unsqueeze(1)
             attend_to_idx = attend_to_idx[:,:-1] # skip private prompts
             attend_to = attend_to[:,:-1,:,:]
@@ -1035,7 +871,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                                 route_idx[i]]
         if self.attn_method in ["sub","linear","dot","token"]:
             attn_scores = self.attend_input_score(inputs_embeds, 
-            attend_to,source_idx, target_idx, task_ids, task, att_mask)
+            attend_to, att_mask)
         elif "gated" in self.attn_method:
             avg_inputs_embeds = self.get_avg_inputs_embeds(inputs_embeds, att_mask)
             prompt_summary = attend_to.mean(dim=2)  # [B, N, D]
@@ -1079,15 +915,13 @@ class AttentivePromptEncoder(torch.nn.Module):
             if self.training: # and self.learn_attention:
                 logits = router
                 mylogs.bp("rbsample")
-                route_method = "rb" #TODO fix this fixed assignment
-                if route_method == "rb":
+                # route_method = "rb" #TODO fix this fixed assignment
+                if route_method == "rb" or route_method == "soft":
                     attn_scores = RelaxedBernoulli(temperature=self.temperature, 
                         logits=logits).rsample()            
                 elif route_method == "gumb":
                     gumb_scores = Gumbel(0, 1).sample(router.shape).to(router.device)
                     attn_scores = (router + gumb_scores) / self.temperature 
-                elif route_method == "params":
-                    attn_scores = router
                 elif route_method == "const":
                     attn_scores  = attn_dist
                     self.norm_method = "nothing"
@@ -1277,26 +1111,48 @@ class AttentivePromptEncoder(torch.nn.Module):
             soft_prompts = torch.einsum(
                 'bts, btsld -> btsld', attn_sel_scores, attend_to_x)
             soft_prompts = soft_prompts.reshape(batch_size, num_targets,-1, self.model_dim) 
-        elif compose_method in ["wsp1","wmp1","wcp1"]:
+        elif compose_method in ["wsp1","wmp1","wcp1", "catp"]:
             avg_prompts = torch.einsum(
                     'bts, btsld -> btld', attn_sel_scores, 
                     attend_to_x)
+            if self.target_share == 0:
+                alpha = self.attend_input_score(inputs_embeds, private_prompt, att_mask)
+                alpha = alpha.reshape(batch_size, 1, 1, 1)
+                beta = self.attend_input_score(inputs_embeds, avg_prompts, att_mask)
+                beta = beta.reshape(batch_size, 1, 1, 1)
+                combined = torch.cat([alpha, beta], dim=1)  # shape: (batch_size, 2, 1, 1)
+                weights = F.softmax(combined, dim=1)      
+                alpha, beta = weights[:, 0:1], weights[:, 1:2]  
+            else:
+                alpha = self.get_target_shares(attn_sel_scores, private_idx, batch_size)
+                alpha = alpha.reshape(batch_size, 1, 1, 1)
+                beta = self.get_target_shares(attn_sel_scores, target_idx, batch_size)
+                beta = beta.reshape(batch_size, 1, 1, 1)
             if compose_method == "wsp1": 
                #alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
                #soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
-               target_shares = self.get_target_shares(attn_sel_scores, target_idx, batch_size)
-               ts = target_shares.reshape(batch_size, 1, 1, 1)
-               soft_prompts = (1 - ts) * avg_prompts + ts * private_prompt 
+               if self.target_share == -1:
+                   soft_prompts = (1 - alpha) * avg_prompts + alpha * private_prompt 
+               elif self.target_share < -4 or self.target_share == 0:
+                   soft_prompts = beta * avg_prompts + alpha * private_prompt 
+               else:
+                   soft_prompts =  avg_prompts + private_prompt 
             elif compose_method == "wmp1": 
-               soft_prompts = avg_prompts * private_prompt 
+                   soft_prompts = avg_prompts * private_prompt 
             elif compose_method == "wcp1": 
-               soft_prompts = torch.cat([avg_prompts,private_prompt], dim=2)
-
+               if self.target_share >= 1:
+                   soft_prompts = torch.cat([avg_prompts, private_prompt], dim=2)
+               elif alpha is not None:
+                   soft_prompts = torch.cat([beta * avg_prompts, alpha * private_prompt], dim=2)
+               else:
+                   soft_prompts = torch.cat([avg_prompts, private_prompt], dim=2)
+            elif compose_method == "catp": 
+                soft_prompts = torch.cat([attend_to_x.squeeze(1), private_prompt], dim=2)
             attn_sel_scores = torch.cat(
-                   [attn_sel_scores, target_shares.reshape(batch_size, 1, 1)], dim=-1)
+                   [attn_sel_scores, alpha.reshape(batch_size, 1, 1)], dim=-1)
             #alpha_scores = alpha.expand(batch_size, 1, 1)  # [B, 1, 1]
             #attn_sel_scores = torch.cat([attn_sel_scores, alpha_scores], dim=-1)
-            attend_to_idx = torch.cat([attend_to_idx, target_idx], dim=-1) 
+            attend_to_idx = torch.cat([attend_to_idx, private_idx.unsqueeze(1)], dim=-1) 
         elif compose_method == "wmp":
             mylogs.bp("wmp")
             s_attn_sel_scores = attn_sel_scores[:,:,:-1]
@@ -1342,7 +1198,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             avg_prompts = torch.einsum(
                     'bts, btsld -> btld', s_attn_sel_scores, 
                     s_attend_to_x)
-            if self.target_share != 2:
+            if self.target_share == 2:
                ts = attn_sel_scores[:,:,-1]
                ts = ts.reshape(batch_size, 1, 1, 1)
                private_prompts = ts * private_prompts
@@ -1583,12 +1439,18 @@ class AttentivePromptEncoder(torch.nn.Module):
             src_prompts = torch.zeros(
                 (num_prompt_encoders, 
                  self.src_prompt_dim, self.out_dim), device=device) 
+            pvt_prompts = {}  # Dictionary keyed by encoder.src_idx
+            src_prompts_dict = {}
             ii = 1
             for encoder in self.prompt_encoders:
                 if encoder.is_source: # and self.use_source_prompts:
                     source_idx_list.append(ii)
                     emb = encoder(encoder.net_inps)
-                    src_prompts[encoder.src_idx, :] = emb
+                    src_prompts_dict[encoder.src_idx] = emb
+                    if self.pvt_prompt_dim == self.src_prompt_dim:
+                        src_prompts[encoder.src_idx, :] = emb
+                    if encoder.is_private:
+                        pvt_prompts[encoder.src_idx] = emb
                     ii += 1
                     continue
                 
@@ -1700,6 +1562,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                             soft_prompts, attn_scores, attend_to_idx = self.attend_prompts(
                                     inputs_embeds, 
                                     src_prompts = sel_prompts, 
+                                    pvt_prompts = pvt_prompts,
                                     source_idx=source_idx, 
                                     target_idx=target_idx, 
                                     task_ids = tids,
@@ -1739,7 +1602,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                                 attn_scores.size(-1)*self.src_prompt_dim), dtype=bool)
                             ignore_zeros = False
                             if not self.training:
-                                ignore_zeros = self.gen_conf.get("ignore_zeros", False)
+                                ignore_zeros = self.gen_conf.get("ignore_zeros", True)
                             if (self.compose_method in ["cat","concat","scat","mcat"] 
                                 and ignore_zeros):
                                 mylogs.bp("pred1")
@@ -2280,7 +2143,8 @@ class CustomModelWrapper(PreTrainedModel):
             kwargs["attention_mask"] = attention_mask
 
         # Delegate generation to the nested model
-        return self.nested_model.generate(**kwargs)
+        output = self.nested_model.generate(**kwargs)
+        return output
 
 
 class CustomModelWrapper_2(PreTrainedModel):

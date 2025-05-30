@@ -232,12 +232,19 @@ class ModelArguments:
     )
 
     attn_method: Optional[str] = field(
-        default="linear",
+        default="params",
         metadata={
             "help": "attention model for attn_prefix"
         },
     )
     # my option
+    gate_method: Optional[str] = field(
+        default="linear",
+        metadata={
+            "help": "gating method for attend to shared and private"
+        },
+    )
+
     compose_method: Optional[str] = field(
         default="wavg",
         metadata={

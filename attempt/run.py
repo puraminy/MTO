@@ -313,23 +313,48 @@ def task_similarity(dif_ij, final_i, final_j, alpha=1.0):
 
 def get_prompts_sim(prompt_encoders, target_embs, model):
     source_embs = {}
-    target_embs = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
+    private_embs = {}
+
+    # Step 1: Prepare target embeddings
+    target_embs_list = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
+
+    # Step 2: Gather source and private embeddings
     for enc in prompt_encoders:
         if enc.is_source:
-            emb = enc(enc.net_inps)  # shape: [N, D] or [D]
+            emb = enc(enc.net_inps)
             if emb.dim() == 2:
                 emb = emb.mean(dim=0)
             source_embs[enc.name] = emb
+            if enc.is_private:
+                private_embs[enc.name] = emb
 
     source_names = list(source_embs.keys())
-    sim_matrix = torch.zeros(len(target_embs), len(source_names))
-    for i, t in enumerate(target_embs):
+    sim_matrix = torch.zeros(len(target_embs_list), len(source_names))
+
+    # Step 3: Fill sim_matrix for all source prompts (including private)
+    for i, t in enumerate(target_embs_list):
         for j, sname in enumerate(source_names):
             s = source_embs[sname]
             sim = F.cosine_similarity(t.unsqueeze(0), s.unsqueeze(0)).item()
             sim_matrix[i, j] = sim
 
-    return sim_matrix, source_names
+    # Step 4: Compute average similarities
+    def average_sim(targets, prompts):
+        if not prompts:
+            return None
+        sims = []
+        for t in targets:
+            prompt_sims = [F.cosine_similarity(t.unsqueeze(0), p.unsqueeze(0)).item()
+                           for p in prompts.values()]
+            sims.append(sum(prompt_sims) / len(prompt_sims))
+        return sum(sims) / len(sims)
+
+    # Average similarity: source without private
+    non_private_source_embs = {k: v for k, v in source_embs.items() if k not in private_embs}
+    avg_sim_source = average_sim(target_embs_list, non_private_source_embs)
+    avg_sim_private = average_sim(target_embs_list, private_embs)
+
+    return sim_matrix, source_names, avg_sim_source, avg_sim_private
 
 def get_task_sim2(target_embs, model):
     target_embs = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
@@ -494,10 +519,11 @@ def visualize_prompts_umap(task_prompts, task_names=None, normalize=True, folder
     plt.savefig(fpath)
 
 def get_task_sim(target_embs, model=None, normalize=False):
-    target_embs = [e.squeeze(0) for k, e in target_embs.items()]
     n = len(target_embs)
     sim_matrix = torch.zeros(n, n)
+    embs = [e for k,e in target_embs.items()]
 
+    target_embs = [e.squeeze(0) for k, e in target_embs.items()]
     for i, t1 in enumerate(target_embs):
         for j, t2 in enumerate(target_embs):
             # Pairwise cosine similarity matrix
@@ -1190,7 +1216,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
             output_dir = exp_output_dir 
        if merge:
            # ee = args["expid"]
-           ee = mylogs.get_run_id(only_num=True)
+           ee = mylogs.get_run_id(only_num=True) + counter
            exp_file = args[merge]
            _output_dir = label + "-" + str(ee)
            _output_dir = _output_dir.strip("-")
@@ -1211,7 +1237,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            # ee = round(float(args["expid"]))
            ee = 1 #mylogs.get_run_id(only_num=True)
            eee = ee
-           _output_dir = label + "-" + str(ee) + "-" + str(counter)
+           _output_dir = label + "-" + str(ee) + "_" + str(counter)
            _output_dir = _output_dir.strip("-")
            output_dir = os.path.join(save_path, _output_dir)
            #if Path(output_dir).exists() and not repeat:
@@ -1222,7 +1248,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            if not reval:
                while Path(output_dir).exists():
                    ee += 1 
-                   _output_dir = label + str(ee)
+                   _output_dir = label + "-" + str(ee) + "_" + str(counter)
+                   _output_dir = _output_dir.strip("-")
                    output_dir = os.path.join(save_path, _output_dir)
            #if label:
            #    expid = experiment.split("/")[-1] + "-" + label + "-run_" + str(eee)
@@ -1231,7 +1258,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            #else:
            #    # expid = experiment.split("/")[-1] + "-run_" + str(eee)
            #    # expid =  expid.strip("-")
-           args["expid"] = _output_dir # expid
+       args["expid"] = _output_dir
        if repeat:
           args["expid"] += "-rep"
        args["output_dir"] = "%" + output_dir 
@@ -1593,6 +1620,7 @@ def train(**kwargs):
             raise ValueError("No prompt in template")
     target_prompt_length = adapter_args.num_prompt_tokens
     source_prompt_length = adapter_args.num_prompt_tokens
+    private_prompt_length = kwargs.get("private_prompt_length", adapter_args.num_prompt_tokens)
     use_source_prompts = kwargs.setdefault("use_source_prompts", True)
     load_source_prompts = kwargs.setdefault("load_source_prompts", False) 
     learn_source_prompts = kwargs.setdefault("learn_source_prompts", False) 
@@ -1700,8 +1728,12 @@ def train(**kwargs):
         #        target_prompt_length += adapter_args.num_prompt_tokens
         elif model_args.compose_method in ["catw","mcat","scat","mscat"]:
             target_prompt_length = num_target_prompts * adapter_args.num_prompt_tokens
+        elif model_args.compose_method in ["catp"]:
+            target_prompt_length = num_source_prompts * adapter_args.num_prompt_tokens
+            target_prompt_length += private_prompt_length
         elif model_args.compose_method in ["wcat", "wcp", "wcp1"]:
-            target_prompt_length = 2 * adapter_args.num_prompt_tokens
+            # target_prompt_length = 2 * adapter_args.num_prompt_tokens
+            target_prompt_length = source_prompt_length + private_prompt_length
         #    if add_target_prompt:
         #        target_prompt_length += adapter_args.num_prompt_tokens
         elif model_args.compose_method == "tcat":
@@ -1749,7 +1781,10 @@ def train(**kwargs):
     task_args["len_thresh"] = kwargs.get("len_thresh", None) # position of question
     task_args["num_prompts"] = num_prompts 
     task_args["full_prefix"] = kwargs.get("full_prefix",False) # position of question
-    task_args["task_prefix"] = kwargs.get("task_prefix", "letter") # position of question
+    task_prefix = kwargs.setdefault("task_prefix", "task")
+    if not "task_prefix" in main_vars:
+        task_prefix = "letter"
+    task_args["task_prefix"] = task_prefix
     task_args["target_prompt_length"] = target_prompt_length 
     task_args["prompt_length"] = kwargs.setdefault("prompt_length", 
                                     adapter_args.num_prompt_tokens)
@@ -1830,6 +1865,7 @@ def train(**kwargs):
        mylogs.plog.info(exp_conf)
     ###### Collect experiment infos
     exp_info = {}
+    exp_info["expid"] = kwargs.get("expid", None)
     exp_info["attn_learning_rate"] = model_args.attn_learning_rate
     multi_tasking = False
     if len(data_args.task_name) > 1:
@@ -1967,7 +2003,7 @@ def train(**kwargs):
         model_args.temperature = ftemp
         model_args.anneal_min = ftemp
         kwargs["anneal_min"] = ftemp 
-    elif kwargs.get("adjust_temperature", True) and "temperature" not in main_vars:
+    elif kwargs.get("adjust_temperature", False) and "temperature" not in main_vars:
         if data_args.max_train_samples < 10:
             model_args.temperature = 5
         elif data_args.max_train_samples < 20:
@@ -1995,6 +2031,7 @@ def train(**kwargs):
     config.prompt_tuning = method == "pt" #my option
     config.attn_tuning = cross_pt
     config.attn_method = model_args.attn_method
+    config.gate_method = kwargs.get("gate_method", "linear")
     compose_method = model_args.compose_method #my option
     config.compose_method = compose_method 
     config.use_composer = kwargs.get("use_composer", False)
@@ -2075,7 +2112,7 @@ def train(**kwargs):
         model.enable_input_require_grads()
         #wrapped_model = get_peft_model(model, peft_config)
         wrapped_model = PTModel(model, peft_config, attn_pt)
-    elif attn_pt is not None:
+    else:
         wrapped_model = CustomModelWrapper(model, base_config, attn_pt, cls=is_classifier)
 
     #model = T5ForConditionalGeneration.from_pretrained(
@@ -2284,8 +2321,10 @@ def train(**kwargs):
         for prompt in source_prompts: 
             encoder_name = prompt
             encoder_type = adapter_args.prompt_encoder_type
+            prompt_length = source_prompt_length
             if "_for" in encoder_name:
                 encoder_type = kwargs.get("private_prompt_encoder_type", encoder_type)
+                prompt_length = private_prompt_length
             encoder, enc_type = create_encoder(encoder_name, model, tokenizer, 
                     prompt_tokens=[],
                     non_linear = prompt_non_linear,
@@ -2293,7 +2332,7 @@ def train(**kwargs):
                     num_layers = prompt_num_layers,
                     is_source = True,
                     out_dim = prompt_out_dim,
-                    length = adapter_args.num_prompt_tokens,
+                    length = prompt_length, 
                     encoder_type = encoder_type,
                     shared_mat= shared_mat) 
             if "_for" in encoder_name:
@@ -2454,7 +2493,7 @@ def train(**kwargs):
         attn_pt.set_encoders(prompt_encoders, 
             source_prompts, 
             source_prompt_length,
-            target_prompt_length, tasks = tasks) 
+            target_prompt_length, private_prompt_length, tasks = tasks) 
         new_vocab_size = (len(tokenizer) + 7) // 8 * 8  # Round up to the nearest multiple of 8
         model.resize_token_embeddings(new_vocab_size, pad_to_multiple_of=8)
 
@@ -2473,15 +2512,20 @@ def train(**kwargs):
     rgrad = len([p for p in model.parameters() if p.requires_grad])
     nrgrad = len([p for p in model.parameters() if not p.requires_grad])
     mylogs.plog.info("Before freeze: requires grad: %s   Not requires grad: %s", rgrad, nrgrad)
+    if adapter_args.freeze_model:
+         freeze_model_params(wrapped_model)
+
     flh = kwargs.get("freeze_lm_head", True)
-    if not flh:
-        model.lm_head.weight = torch.nn.Parameter(model.lm_head.weight.clone())
-    if attn_pt is not None: # and adapter_args.freeze_model is True:
-        model = modify_model_after_init(
-            wrapped_model, training_args, adapter_args, adapter_config)
+    fln = kwargs.get("freeze_layer_norms", True)
+    bitfit = kwargs.get("bitfit", False)
+    adapter_args.unfreeze_lm_head = not flh 
+    adapter_args.unfreeze_layer_norms = not fln
+    adapter_args.is_classifier = is_classifier
+    adapter_args.bitfit = bitfit
+    adapter_config.gate_method = kwargs.get("gate_method", "linear")
+    model = modify_model_after_init(
+        wrapped_model, training_args, adapter_args, adapter_config)
    
-    if not flh:
-        model.nested_model.lm_head.weight.requires_grad = True
     learn_loaded_prompts = kwargs.setdefault("learn_loaded_prompts", True) 
     learn_private_prompts = kwargs.setdefault("learn_private_prompts", True) 
     requires_grad_encoders = []
@@ -2776,31 +2820,38 @@ def train(**kwargs):
     grouped_params = []
     all_parameters = set([p for p in wrapped_model.parameters() if p.requires_grad])
     attn_params = []
+    gate_params = []
     prompt_params = []
     mylogs.bp("lr")
     attn_weight_decay = kwargs.get("attn_weight_decay", 0.1)
+    gate_weight_decay = kwargs.get("gate_weight_decay", 0.1)
+    gate_learning_rate = kwargs.get("gate_learning_rate", model_args.attn_learning_rate)
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
         if attn_pt is not None:
             for name, param in attn_pt.named_parameters():
-               if name == "router" or "proj" in name: 
+               if name == "target_router" in name: 
+                  gate_params.append(param)
+               elif name == "router" or "proj" in name: 
                   attn_params.append(param)
         for name, param in model.named_parameters():
             if (name == "encoder.attn_W_up.weight" 
                 or name == "encoder.attn_W_down.weight" 
                 or name == "encoder.layer_norm.weight"
-                or name == "encoder.router" 
-                or name == "encoder.target_router"):
+                or name == "encoder.router"):
                    attn_params.append(param)
 
         attn_params = set(attn_params)
+        gate_params = set(gate_params)
         grouped_params.append({'params': list(attn_params), 
             'lr': model_args.attn_learning_rate, "weight_decay": attn_weight_decay})
+        grouped_params.append({'params': list(gate_params), 
+            'lr': gate_learning_rate, "weight_decay": gate_weight_decay})
         
 
     ########### My Code
-    if "learning_rate" in main_vars:
-        model_args.prompt_learning_rate = training_args.learning_rate 
-        model_args.target_learning_rate = training_args.learning_rate 
+    #if "learning_rate" in main_vars:
+    #    model_args.prompt_learning_rate = training_args.learning_rate 
+    #    model_args.target_learning_rate = training_args.learning_rate 
 
     prompt_learning_rate = model_args.prompt_learning_rate 
     target_prompt_learning_rate = model_args.target_prompt_learning_rate 
@@ -2812,18 +2863,22 @@ def train(**kwargs):
         target_prompt_learning_rate = prompt_learning_rate 
     if private_prompt_learning_rate is None:
         private_prompt_learning_rate = prompt_learning_rate 
-    shr_prompt_params = []
+    loaded_prompt_params = []
     src_prompt_params = []
     tgt_prompt_params = []
     pvt_prompt_params = []
     mylogs.bp("opt")
     learning_rate = training_args.learning_rate
     shared_prompt_learning_rate = source_prompt_learning_rate
+    loaded_prompt_learning_rate = source_prompt_learning_rate
     if method == "pt" or cross_pt:
-        if "learning_rate" in main_vars:
-            target_prompt_learning_rate = learning_rate
+        #if "learning_rate" in main_vars:
+        #    target_prompt_learning_rate = learning_rate
         if "shared_prompt_learning_rate" in main_vars:
             shared_prompt_learning_rate = kwargs.get("shared_prompt_learning_rate", 
+                    source_prompt_learning_rate)
+        if "loaded_prompt_learning_rate" in main_vars:
+            loaded_prompt_learning_rate = kwargs.get("loaded_prompt_learning_rate", 
                     source_prompt_learning_rate)
         learning_rate = target_prompt_learning_rate
         for encoder in attn_pt.prompt_encoders:
@@ -2831,12 +2886,15 @@ def train(**kwargs):
                    p for n, p in encoder.named_parameters() if p.requires_grad and n != "A"]
            if para_list: 
                if encoder.is_source and not encoder.is_private:
-                   if not "com" in encoder.name:
-                       src_prompt_params.extend(para_list)
+                   if encoder.is_loaded:
+                      loaded_prompt_params.extend(para_list)
                    else:
-                       shr_prompt_params.extend(para_list)
+                      src_prompt_params.extend(para_list)
                elif encoder.is_private:
-                   pvt_prompt_params.extend(para_list)
+                   if encoder.is_loaded:
+                      loaded_prompt_params.extend(para_list)
+                   else:
+                      pvt_prompt_params.extend(para_list)
                else:
                    tname = encoder.name.replace("tar-","")
                    if tname in exclude_from_test_tasks:
@@ -2845,26 +2903,27 @@ def train(**kwargs):
                        tgt_prompt_params.extend(para_list)
 
         src_prompt_params = set(src_prompt_params)
-        shr_prompt_params = set(shr_prompt_params)
+        loaded_prompt_params = set(loaded_prompt_params)
         tgt_prompt_params = set(tgt_prompt_params)
         pvt_prompt_params = set(pvt_prompt_params)
         grouped_params.append({'params': list(src_prompt_params), 
             'lr': source_prompt_learning_rate})
-        grouped_params.append({'params': list(shr_prompt_params), 
-            'lr': shared_prompt_learning_rate})
+        grouped_params.append({'params': list(loaded_prompt_params), 
+            'lr': loaded_prompt_learning_rate})
         grouped_params.append({'params': list(pvt_prompt_params), 
             'lr': private_prompt_learning_rate})
         grouped_params.append({'params': list(tgt_prompt_params), 
             'lr': target_prompt_learning_rate})
         prompt_params = list(src_prompt_params) \
-                + list(tgt_prompt_params) + list(shr_prompt_params) + list(pvt_prompt_params)
+                + list(tgt_prompt_params) + list(loaded_prompt_params) + list(pvt_prompt_params)
 
-    other_params = all_parameters - set(attn_params) - set(prompt_params)
+    other_params = all_parameters - set(attn_params) - set(prompt_params) - set(gate_params)
     other_params = list(other_params)
+    base_learning_rate = kwargs.get("base_learning_rate", training_args.learning_rate)
     if shared_mat is not None:
         other_params.append(shared_mat)
     if other_params:
-        grouped_params.append({'params': other_params, 'lr': training_args.learning_rate})
+        grouped_params.append({'params': other_params, 'lr': base_learning_rate})
     #### ooooo 
     mylogs.bp("opt")
     mylogs.bp("optim")
@@ -3177,9 +3236,9 @@ def train(**kwargs):
     # Test
     mylogs.bp("do_test")
     model.training = False
-    attn_pt.training = False
     reval = not training_args.do_train 
     if attn_pt is not None:
+        attn_pt.training = False
         slen = len([e for e in attn_pt.prompt_encoders if e.is_source and not e.is_private]) 
         exp_info["slen"] = slen
     load_model_dir = kwargs.get("load_model_dir", training_args.output_dir)
@@ -3583,7 +3642,7 @@ def train(**kwargs):
                     df["m_score"] = m_score = round(float(v),1) 
                 mm += 1
             df = auto_task.before_scoring(df)
-            scores = do_score(df, "rouge", save_to, use_wandb=use_wandb)
+            df, scores = do_score(df, "rouge", save_path = save_to, use_wandb=use_wandb)
             scores["m_score"] = m_score 
             auto_task.after_scoring(df, golds, preds)
             return df, scores, golds, preds
@@ -3765,6 +3824,8 @@ def train(**kwargs):
             exp_folder = Path(training_args.output_dir).parent
         exp_folder_name = Path(training_args.output_dir).stem
         exp_folder = str(exp_folder) 
+        dfs = {}
+        save_paths = {}
         if not method == "pt" and not cross_pt:
             eval_folder = training_args.output_dir
             for idx, (task, test_dataset) in enumerate(test_datasets.items()):
@@ -3926,6 +3987,8 @@ def train(**kwargs):
                                         use_cache = True
                                         mylogs.minfo("Using cached predictions for " + task)
 
+                            save_paths[task] = save_to
+                            save_to = None #TODO 
                             df, scores, golds, preds = evaluate_test(task, test_dataset, 
                                     save_to, ds_name, auto_task, gen_conf, use_cache = use_cache)
                             task_prompt = attn_pt.task_prompt  # shape [1, L, N]
@@ -3935,6 +3998,7 @@ def train(**kwargs):
 
                             df["src_path"] = op.join(mylogs.home, data_args.data_path, 
                                                     ds_conf,"test.tsv")
+                            dfs[task] = df
                             mylogs.bp("rouge")
                             # TODO make it general not according to task names
                             if True: #"xAttr" in data_args.task_name: 
@@ -4041,12 +4105,20 @@ def train(**kwargs):
                             #if len(torch.nonzero(scores_matrix)) < 1:
                             #    start = slen if add_or_attend_input else slen + 1 
                             #    scores_matrix[:tlen, start: start + tlen +1] = torch.eye(tlen)
-                            psim, p_labels = get_prompts_sim(prompt_encoders, 
-                                    target_embs = task_tuned_prompts,  
-                                    model=model.nested_model)
-                            tsim  = get_task_sim(target_embs = task_tuned_prompts,  
-                                    model=model.nested_model, normalize = True)
-                            visualize_prompts_pca(task_tuned_prompts, folder=eval_folder)
+                            embs = [e for k,e in task_tuned_prompts.items()]
+                            source_names = [e.name for e in prompt_encoders]
+                            psim = tsim = torch.zeros(len(embs), len(source_names))
+                            if all(e is not None for e in embs):
+                                psim, p_labels, avg_sim_src, avg_sim_pvt = get_prompts_sim(
+                                        prompt_encoders, 
+                                        target_embs = task_tuned_prompts,  
+                                        model=model.nested_model)
+                                tsim  = get_task_sim(target_embs = task_tuned_prompts,  
+                                        model=model.nested_model, normalize = True)
+                                visualize_prompts_pca(task_tuned_prompts, folder=eval_folder)
+                                for task, df in dfs.items():
+                                    df["sim_src"] = avg_sim_src
+                                    df["sim_pvt"] = avg_sim_pvt
                             #visualize_prompts_tsne(task_tuned_prompts, folder=eval_folder)
                             #visualize_prompts_umap(task_tuned_prompts, folder=eval_folder)
                             if cross_pt:
@@ -4054,6 +4126,8 @@ def train(**kwargs):
                                         {"score":scores_matrix, "psim":psim, "tsim":tsim}, 
                                         square = {"score":False,"psim":False,"tsim":True},
                                         title = "score-tsim-psim",
+                                        vmax=1,
+                                        # vmin=0.2,
                                         spec = "score-tsim-"+norm_method + "-" + str(gmin) \
                                                 + "-" + str(gmax) \
                                                 + " | {:.2f}".format(mean_score))
@@ -4062,6 +4136,7 @@ def train(**kwargs):
                                         title = "sim",
                                         annot=True,
                                         square=True,
+                                        vmax=1,
                                         spec = norm_method + " | {:.2f}".format(mean_score))
 
                             if mask is not None:
@@ -4149,6 +4224,11 @@ def train(**kwargs):
                                     print(effect_scores[test_key]) 
                     #### end of for
                     # eeeeeeeeeeeeeeeeee
+                    # Saving dfs:
+                    print("Saving dfs ..................")
+                    for task, df in dfs.items():
+                        save_path = save_paths[task]
+                        df.to_csv(save_path, sep="\t", index=False)
                     mylogs.bp("effect")
                     spec = str(gen_mask_counter)
                     if gen_mask_counter < len(masking_list):
@@ -4172,7 +4252,8 @@ def train(**kwargs):
                             spec= "effect_" + spec,
                             title = "effect",
                             mask_zeros = True,
-                            vmin = kwargs.get("vmin", None),
+                            vmax=100,
+                            vmin = kwargs.get("vmin", 10),
                             p_labels = mask_labels)
                     gen_mask_counter += 1
                 

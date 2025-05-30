@@ -307,7 +307,7 @@ class ResMLP(PromptEncoder):
         if in_dim == -1:
             in_dim = embedding_dim
         
-        hidden_size = hidden_size if hidden_size > 1 else embedding_dim // 2
+        hidden_size = hidden_size if hidden_size > 1 else embedding_dim # // 2
         if enc_type not in ['LSTM', 'LSTM1', 'LSTM2', 'transformer']:
             layers = [nn.Linear(in_dim, hidden_size)]
 
@@ -333,7 +333,7 @@ class ResMLP(PromptEncoder):
 
         elif enc_type in ['LSTM1', 'LSTM2', 'LSTM']:
             self.lstm_head = torch.nn.LSTM(input_size=in_dim,
-                                           hidden_size=in_dim // 2,
+                                           hidden_size=in_dim, # // 2,
                                            num_layers=1 if enc_type=='LSTM1' else 2,
                                            dropout=0.05,
                                            bidirectional=True,
@@ -372,7 +372,7 @@ class ResMLP(PromptEncoder):
 class MLPPromptEncoder(PromptEncoder):
     enc_type = "mlp"
     def __init__(self, num_layers=1, hidden_size=-1, 
-            nl = "relu", out_dim= -1, in_dim=-1, **kwargs):
+            nl = "gelu", out_dim= -1, in_dim=-1, **kwargs):
         super().__init__(**kwargs)
         embedding_dim = self.embedding_dim
         if out_dim == -1:
@@ -418,7 +418,7 @@ class LSTMEmbeddingPromptEncoder(PromptEncoder):
         hsize = hidden_size if hidden_size > 1 else embedding_dim
         self.lstm = torch.nn.LSTM(
             input_size=embedding_dim,
-            hidden_size=embedding_dim // 2, #my code
+            hidden_size=embedding_dim, # // 2, #my code
             num_layers=2,
             dropout=0,
             bidirectional=True,
