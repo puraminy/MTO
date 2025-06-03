@@ -95,6 +95,14 @@ class WBCallback(TrainerCallback):
     def save_images(scores, x_labels, y_labels, state=None, fname="", 
             annot=True,title="", add_tags=True, vmin=None, vmax=None):
         if not title: title = fname
+        if vmin is not None:
+            vmin = min(vmin, vmax)
+        else:
+            vmax = None
+        if vmax is not None:
+            vmax = max(vmin+1, vmax)
+        else:
+            vmin = None
         if add_tags:
             fig, axes = plt.subplot_mosaic("ABB;ACC;ADD")
             ax1, ax2, ax3,ax4 = axes["A"], axes["B"], axes["C"], axes["D"]
@@ -150,6 +158,14 @@ class WBCallback(TrainerCallback):
     ):
         import mylogs  # assuming your custom logging module
         mylogs.bp("save_image")
+        if vmin is not None:
+            vmin = min(vmin, vmax)
+        else:
+            vmax = None
+        if vmax is not None:
+            vmax = max(vmin+1, vmax)
+        else:
+            vmin = None
 
         if not isinstance(scores, list):
             scores = [scores]
@@ -195,7 +211,7 @@ class WBCallback(TrainerCallback):
                 annot=annot,
                 cbar=cbar,
                 mask=mask,
-                vmin=vmin,
+                vmin=None,
                 vmax=vmax,
                 xticklabels=x_labels,
                 yticklabels=y_labels,

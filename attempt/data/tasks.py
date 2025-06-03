@@ -76,6 +76,7 @@ class AbstractTask(abc.ABC):
     do_shuffle = True  # My code
     config = NotImplemented
     prefix = None
+    label_name = 'label'
     preprocessor: Callable = NotImplemented
     metric = NotImplemented
     metric_names = NotImplemented
@@ -248,7 +249,12 @@ class AbstractTask(abc.ABC):
         for idx in all_indices:
             sample = dataset[idx]
             # Replace 'label' with your actual label field
-            label = sample['label'] if 'label' in sample else sample['target']
+            if self.label_name in sample:
+                label = sample[self.label_name] 
+            elif 'target' in sample:
+               label = sample['target']
+            else:
+                raise ValueError("No valid label name was specified for task ", self.name)
             if type(label) == float: 
                 label = round(label)
             label_counts[label].append(idx)
@@ -1457,6 +1463,7 @@ class SocialIQA(QA):
 class SciTail(AbstractTask):
     name = "scitail"
     labels_list = ["0", "1"]
+    label_name = 'gold_label'
     metric = [metrics.accuracy]
     metric_names = ["accuracy"]
     labels_map = {
@@ -2392,6 +2399,7 @@ class MNLI(AbstractTask):
     # labels_map = {"map":{"0":"en", "1":"neutral", "2": "contradicts"}
     labels_map = {
             "map": {"0":"entailment", "1":"neutral", "2": "contradiction"},
+            "follow": {"0":"follows", "1":"neutral", "2": "contradiction"},
             "yn":{"0":"yes", "1":"neutral", "2":"no"}
             # "map2":{"0":"entailment", "1":"neutral", "2": "contradiction"}
         }

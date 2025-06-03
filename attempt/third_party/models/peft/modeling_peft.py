@@ -1,5 +1,5 @@
 import torch
-import math
+import math, random
 import torch.nn.functional as F
 from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
 from torch.distributions import Gumbel
@@ -325,6 +325,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.ignore_private = config.ignore_private
         self.attend_input = config.attend_input
         self.add_input = config.add_input
+        self.task_dropout = config.task_dropout
         self.add_target = config.add_target
         self.random_source = config.random_source
         self.compose_method = config.compose_method
@@ -843,7 +844,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             assert self.use_private_prompts is True, "use private prompts must be enabled"
             private_prompt = attend_to[:,-1,:,:]
             private_idx = attend_to_idx[:,-1] 
-            if pvt_prompts is not None:
+            if pvt_prompts is not None and compose_method == "wcp1" and False: #TODO
                 private_prompt = torch.stack(
                     [pvt_prompts[int(idx.item())] for idx in private_idx], dim=0
                 )
@@ -1070,7 +1071,7 @@ class AttentivePromptEncoder(torch.nn.Module):
 
         # target_shares = torch.ones(1, batch_size, device=device)
 
-        if self.random_source > 0 and not self.training:
+        if self.random_source > 0 and self.training:
             num_cols = attn_sel_scores.size(-1)  
             num_selected_cols = self.random_source  # Number of random columns to select
             num_selected_cols = min(num_selected_cols, num_cols)
@@ -1131,10 +1132,12 @@ class AttentivePromptEncoder(torch.nn.Module):
             if compose_method == "wsp1": 
                #alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
                #soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
-               if self.target_share == -1:
-                   soft_prompts = (1 - alpha) * avg_prompts + alpha * private_prompt 
-               elif self.target_share < -4 or self.target_share == 0:
+               if self.target_share == -1 or self.target_share == 0:
                    soft_prompts = beta * avg_prompts + alpha * private_prompt 
+               elif self.target_share == -5:
+                   soft_prompts = avg_prompts + alpha * private_prompt 
+               elif self.target_share < -5:
+                   soft_prompts = (1 - alpha) * avg_prompts + alpha * private_prompt 
                else:
                    soft_prompts =  avg_prompts + private_prompt 
             elif compose_method == "wmp1": 
@@ -1143,15 +1146,21 @@ class AttentivePromptEncoder(torch.nn.Module):
                if self.target_share >= 1:
                    soft_prompts = torch.cat([avg_prompts, private_prompt], dim=2)
                elif alpha is not None:
-                   soft_prompts = torch.cat([beta * avg_prompts, alpha * private_prompt], dim=2)
+                   if self.target_share >= -1:
+                       soft_prompts = torch.cat([beta * avg_prompts, alpha * private_prompt], dim=2)
+                   else:
+                       soft_prompts = torch.cat([(1 - alpha) * avg_prompts, alpha * private_prompt], dim=2)
                else:
                    soft_prompts = torch.cat([avg_prompts, private_prompt], dim=2)
             elif compose_method == "catp": 
                 soft_prompts = torch.cat([attend_to_x.squeeze(1), private_prompt], dim=2)
             attn_sel_scores = torch.cat(
-                   [attn_sel_scores, alpha.reshape(batch_size, 1, 1)], dim=-1)
+                   [attn_sel_scores, beta.reshape(batch_size, 1, 1)], dim=-1)
+            #attn_sel_scores = torch.cat(
+            #       [attn_sel_scores, alpha.reshape(batch_size, 1, 1)], dim=-1)
             #alpha_scores = alpha.expand(batch_size, 1, 1)  # [B, 1, 1]
             #attn_sel_scores = torch.cat([attn_sel_scores, alpha_scores], dim=-1)
+            #attend_to_idx = torch.cat([attend_to_idx, target_idx], dim=-1) 
             attend_to_idx = torch.cat([attend_to_idx, private_idx.unsqueeze(1)], dim=-1) 
         elif compose_method == "wmp":
             mylogs.bp("wmp")
@@ -1282,7 +1291,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         target_shares = None
         device = attn_sel_scores.device
         if self.target_share is not None:
-            if self.target_share == -1 or self.target_share < -4:
+            if self.target_share < 0:
                 target_router = self.target_router.unsqueeze(0)
                 target_router = batched_index_select(target_router, 1, target_idx)
                 if self.target_share == -10:
@@ -1536,6 +1545,9 @@ class AttentivePromptEncoder(torch.nn.Module):
                                mylogs.bp("keepprompt")
                            if self.gen_conf is not None and "attn_mask" in self.gen_conf:
                                attn_mask = self.gen_conf["attn_mask"] 
+                        elif self.task_dropout is True:
+                            col = random.randint(1, self.num_src_encoders)
+                            attn_mask = self.make_attn_mask(col, 1, "rem")
                         source_idx = source_idx_list.repeat(batch_size, 1)
                         attn_mask = attn_mask.repeat(batch_size, 1, 1)
                         sel_attn_mask = batched_index_select(attn_mask, 2, 

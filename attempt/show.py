@@ -49,26 +49,64 @@ from PIL import ImageChops
 import scipy
 import math
 
-def line_plot(df2, selected_cols, label):
-    if selected_cols[0] == 'num_target_prompts':
-        df2['num_source_prompts'] = df2['num_target_prompts'] - 1
-        selected_cols[0] = 'num_source_prompts'
+matplotlib.rcParams.update({
+    'font.size': 12,
+    'figure.dpi': 300,
+    'axes.titlesize': 14,
+    'axes.labelsize': 12,
+    'lines.linewidth': 2,
+    'legend.fontsize': 10,
+    'grid.alpha': 0.4,
+})
 
+def line_2_plot(df, x_col, y_col, cat_col, x_label, y_label='Accuracy', get_input=False):
+    if x_col == 'num_target_prompts':
+        df['num_source_prompts'] = df['num_target_prompts'] - 1
+        x_col = 'num_source_prompts'
+
+    df = df.sort_values(x_col)
+
+    markers = ['o', 's']
+    colors = ['orange', 'blue']
+    cats = df[cat_col].unique()
+    mapping = {cat: (rowinput(cat + ":", cat) if get_input else cat) for cat in cats}
+
+    if get_input:
+        df[cat_col] = df[cat_col].map(mapping)
+
+    for i, cat in enumerate(cats):
+        filtered_df = df[df[cat_col] == mapping[cat]]
+        plt.plot(filtered_df[x_col], filtered_df[y_col], marker=markers[i % len(markers)],
+                 label=mapping[cat], color=colors[i % len(colors)])
+
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def line_plot(df2, selected_cols, measure_cols, x_label, y_label='Accuracy'):
     col = selected_cols[0]
+    measure = measure_cols[0]
 
-    summary2 = df2.groupby(col)['All'].agg(['mean', 'std']).reset_index()
+    summary2 = df2.groupby(col)[measure].agg(['mean', 'std']).reset_index()
 
     plt.figure(figsize=(8, 5))
-    plt.plot(summary2[col], summary2['mean'], '-o', label='Mean Performance', color='green')
+
+    # Plot mean and error bars
+    plt.plot(summary2[col], summary2['mean'], '-o', label='Mean', color='green')
     plt.errorbar(summary2[col], summary2['mean'], yerr=summary2['std'], fmt='o', capsize=5, 
                  ecolor='black', label='Std Dev')
 
-    plt.xlabel(label)
-    plt.ylabel('Accuracy (mean ± std)')
-    #plt.title('Performance vs Number of Source Prompts with Std Dev (Second Dataset)')
+    # Use larger font sizes for publication-quality output
+    plt.xlabel(x_label) #, fontsize=18, fontweight='bold')
+    plt.ylabel(y_label) # + ' ', fontsize=18, fontweight='bold')
+    plt.xticks(summary2[col]) #, fontsize=16)
+    #plt.yticks(fontsize=16)
     plt.grid(True)
-    plt.xticks(summary2[col])
-    plt.legend()
+    #plt.legend(fontsize=16)
     plt.tight_layout()
     plt.show()
 
@@ -884,11 +922,15 @@ def add_cols(df):
         df["bert_score"] = df["bert_score"]*100 
     if True: #"compose_method" in df:
         df["expid"] = df["exp_name"].str.split("-").str[1]
+        df["num_target_prompts"] = df["num_target_prompts"] - 1 
         # if not "expid" in df:
         df["expid"] = df["expid"].astype(str).str.replace("_num", "", regex=False)
         df["expname"] = df["exp_name"].str.split("-").str[1]
         df["ftag"] = df["folder"].str.split("/").str[-1]
         df["ftag"] = df["ftag"].str.split("_").str[0]
+        if "sim_pvt" in df:
+            df["sim_pvt"] = round(df["sim_pvt"],2)
+            df["sim_src"] = round(df["sim_src"],2)
 
         #df["model_base"] = df["model_name_or_path"].apply(lambda x: '-'.join(x.split('-')[1:2] + x.split('-')[-2:]))
 
@@ -993,6 +1035,7 @@ class MyDF:
     sel_rows = []
     sel_cols = []
     selected_cols = []
+    measure_cols = []
     cur_row = 0
     cur_col = -1
     left = 0
@@ -1002,7 +1045,7 @@ class MyDF:
     is_filtered = False
     def __init__(self, df, context, sel_cols, cur_col,info_cols, 
             sel_rows, sel_row, cur_row, 
-            left, group_col, selected_cols, sort, is_filtered, cond_set, **kwargs):
+            left, group_col, selected_cols, measure_cols, sort, is_filtered, cond_set, **kwargs):
         self.df = df
         self.context = context
         self.sel_cols = sel_cols
@@ -1014,6 +1057,7 @@ class MyDF:
         self.left = left
         self.group_col = group_col
         self.selected_cols = selected_cols
+        self.measure_cols = measure_cols
         self.sort = sort
         self.is_filtered = is_filtered
         self.cond_set = cond_set
@@ -1118,7 +1162,7 @@ def show_df(df, summary=False):
         if not cur_df:
             cur_df = MyDF(df, context, sel_cols, cur_col,info_cols, 
                 sel_rows, sel_row, cur_row, left, group_col, 
-                selected_cols, sort, is_filtered, cond_set)
+                selected_cols, measure_cols, sort, is_filtered, cond_set)
         back.append(cur_df)
         general_keys["b"] = "back"
 
@@ -1140,7 +1184,7 @@ def show_df(df, summary=False):
 
     orig_tag_cols = tag_cols.copy()
     src_path = ""
-    if "src_path" in df:
+    if "src_path" in df and False:
         src_path = df.loc[0, "src_path"]
         if not src_path.startswith("/"):
             src_path = os.path.join(mylogs.home, src_path)
@@ -1162,6 +1206,7 @@ def show_df(df, summary=False):
     shortkeys = {"main":{"r":"pivot table"}}
     ax = None
     fig = None
+    measure_cols = []
     if "Z" in hotkey:
         df["m_score"] = df["rouge_score"]
     context = dfname
@@ -1390,6 +1435,8 @@ def show_df(df, summary=False):
                        #            default = sel_col_color)
                        elif sel_col in selected_cols:
                           cell_color = selected_col_color
+                       elif sel_col in measure_cols:
+                          cell_color = WARNING_COLOR 
                        else:
                           cell_color = sel_col_color
                    else:
@@ -1397,6 +1444,8 @@ def show_df(df, summary=False):
                           cell_color = MSG_COLOR
                        elif sel_col in selected_cols:
                           cell_color = selected_col_color
+                       elif sel_col in measure_cols:
+                          cell_color = WARNING_COLOR 
                        elif pp == _cur_row:
                           cell_color = sel_row_color
                        elif sel_col in cond_colors:
@@ -1915,6 +1964,16 @@ def show_df(df, summary=False):
                 col = sel_cols[cur_col]
                 df = df.sort_values(by=col, ascending=asc)
             asc = not asc
+        elif char  == "X":
+            cols = [sel_cols[cur_col]]
+            for col in cols:
+                if col in measure_cols:
+                    measure_cols.remove(col)
+                else:
+                    measure_cols.append(col)
+            consts["measure_cols"] = measure_cols
+            cur_col += 1
+            mbeep()
         elif char in ["\""] or ch == cur.KEY_NPAGE:
             col = sel_cols[cur_col]
             if col in selected_cols:
@@ -1967,8 +2026,11 @@ def show_df(df, summary=False):
         elif char == "-":
             backit(df, sel_cols)
             col_to_ignore = [sel_cols[cur_col]] if not selected_cols else selected_cols
+            float_cols = df.select_dtypes(include=["float", "float64", "float32"]).columns.tolist()
+
+            #cols_to_ignore = set(col_to_ignore) | set(float_cols)
             row_values = df.iloc[sel_row]
-            ignore_cols = col_to_ignore  + pcols + ["time", "All","exp","expid","eid"]  
+            ignore_cols = col_to_ignore  + pcols + ["time","sim_pvt","sim_src", "All","exp","expid","eid"]  
             # Create mask: rows identical in all non-ignored columns
             #check_cols=[col for col in sel_cols if col not in ignore_cols and col in main_vars]
             check_cols = [col for col in sel_cols if col not in ignore_cols]
@@ -2443,7 +2505,7 @@ def show_df(df, summary=False):
                 df = back_df
                 df = df.groupby(selected_cols).std(numeric_only=True).reset_index()
             df = df.round(2)
-        elif char in ["a"] and context != "grouping":
+        elif char == "a" and context != "grouping":
             backit(df, sel_cols)
             context = "grouping"
             shortkeys["grouping"] = {"m":"show mean","s":"show std"}
@@ -2454,25 +2516,27 @@ def show_df(df, summary=False):
             if not selected_cols:
                 #cols = ["label", "max_train_samples"]
                 cols = sel_cols[cur_col]
-
             if len(cols) > 0:
-                target_col = "All" if "All" in df else "m_score"
-                df = df.groupby(cols, as_index=False).agg({
-                    target_col: ['mean', 'std', 'count'],
-                    'd_seed': lambda x: ', '.join(map(str, x.unique()))
-                }).reset_index()
+                # Determine the target columns for aggregation
+                target_col = ["All"] if "All" in df and not measure_cols else measure_cols
+
+                # Build aggregation dictionary
+                agg_dict = {col: ['mean', 'std', 'count'] for col in target_col}
+                agg_dict['d_seed'] = lambda x: ', '.join(map(str, x.unique()))
+
+                # Groupby and aggregate
+                df = df.groupby(cols, as_index=False).agg(agg_dict).reset_index()
 
                 # Flatten MultiIndex columns
-                df.columns = ['_'.join(col).strip('_') for col in df.columns.values]
+                df.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col for col in df.columns.values]
 
-                # Optional rounding for numeric columns
+                # Round numeric columns
                 for col in df.columns:
-                    if df[col].dtype in ['float64', 'float32']:
+                    if df[col].dtype in ['float64', 'float32'] or '_mean' in col:
                         df[col] = df[col].round(2)
 
                 sel_cols = list(df.columns)
                 cond_colors["mean"] = score_colors
-
             selected_cols = []
             left = 0
         elif char in ["g"]: #, "u"]:
@@ -2724,7 +2788,7 @@ def show_df(df, summary=False):
                         # remove_tree(path)
                     mbeep()
             sel_rows = []
-        elif char == "d":
+        elif char == "d" and prev_char != "=":
             s_rows = sel_rows
             if not sel_rows:
                 s_rows = [sel_row]
@@ -3177,6 +3241,23 @@ def show_df(df, summary=False):
                 else:
                     _agg[c] = "first"
             df = df.groupby(list(dot_cols.keys())).agg(_agg).reset_index(drop=True)
+        elif char == "d" and prev_char == "=":
+            backit(df, sel_cols)
+            cond = ""
+            for c,v in cond_set.items():
+                cond += "(" + v + ") & "
+            cond = cond.strip(" & ")
+            # mlog.info("cond %s, ", cond)
+            if cond:
+               df = df[~eval(cond)]
+               #df = df.reset_index()
+               filter_df = df
+               if not "filter" in extra:
+                  extra["filter"] = []
+               extra["filter"].append(cond)
+               sel_row = 0
+            group_col = ""
+            keep_uniques = False
         elif is_enter(ch) and prev_char == "=":
             backit(df, sel_cols)
             cond = ""
@@ -3303,6 +3384,7 @@ def show_df(df, summary=False):
             dot_cols = {}
             cond_set = {}
             keep_cols = []
+            measure_cols = []
             consts = {}
             visual_mode = False
         elif char == "v":
@@ -3440,7 +3522,7 @@ def show_df(df, summary=False):
                     tdf = pd.read_table(path)
                     tdf[col] = label
                     tdf.to_csv(path, sep="\t", index=False)
-        if char == "X":
+        if char == "X" and False:
            backit(df, sel_cols)
            exprs = []
            scores = []
@@ -3856,9 +3938,24 @@ def show_df(df, summary=False):
 
             plt.tight_layout()
             plt.show()
-        if cmd  == "line":
-            label = rowinput("X Label:")
-            line_plot(df[selected_cols], selected_cols, label)
+        if cmd.startswith("line"):
+            if not measure_cols:
+                measure_cols = ['All']
+            cols = selected_cols + [sel_cols[cur_col]] + measure_cols
+            x_label = cols[0]
+            y_label = measure_cols[0]
+            if 'input' in cmd:
+                x_label = rowinput("X Label:")
+            if 'input' in cmd:
+                y_label = rowinput("Y Label:", default= "Mean Accuracy")
+            if "2" in cmd:
+                line_2_plot(df[cols], 
+                        x_col = sel_cols[cur_col], 
+                        y_col = measure_cols[0], 
+                        cat_col = selected_cols[0], 
+                        x_label = x_label, y_label = y_label, get_input= "input" in cmd)
+            else:
+                line_plot(df[cols], cols, measure_cols, x_label, y_label)
         elif cmd.startswith("bar") or cmd.startswith("line"):
             show_extra = True
             consts["columns"] = sel_cols 
@@ -3887,6 +3984,8 @@ def show_df(df, summary=False):
                     df[filter_col] = pd.Categorical(df[filter_col], categories=desired_order, ordered=True)
                 if x_col == "prompts_conf":
                     df[x_col] = pd.Categorical(df[x_col], categories=desired_order, ordered=True)
+                if x_col == "num_target_prompts":
+                    df[x_col] = df[x_col] - 1
                 category3_mapping = {
                         'AnswerPrompting': 'AP', 'ChoicePrompting': 'CP',
                         'MaskedAnswerPrompting': 'MAP', 'MaskedChoicePrompting': 'MCP' 
@@ -4828,9 +4927,12 @@ def show_df(df, summary=False):
                 _dfname = "test"
             cmd, _ = minput(cmd_win, 0, 1, f"File Name for {_name} (without extension)=", default=_dfname, all_chars=True)
             cmd = cmd.split(".")[0]
+            doc_dir = "/home/ahmad/Desktop/SN"
             if cmd != "<ESC>":
                 if char == "}":
-                    dfname = os.path.join(base_dir, cmd+".tsv")
+                    dfname = os.path.join(doc_dir, cmd+".tsv")
+                    if Path(dfname).is_file():
+                        shutil.move(dfname, dfname.replace(".tsv", mylogs.now + ".tsv"))
                     df.to_csv(dfname, sep="\t", index=False)
                     show_msg("written in " + dfname)
                 else:

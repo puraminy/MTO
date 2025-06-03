@@ -1185,7 +1185,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        if max_exp > 0 and exps_done > max_exp:
            print(f"Max number of exp reached {max_exp} ")
            return
-       exp_dir = experiment.split("/")[-1] 
+       ee = mylogs.get_run_id(only_num=True) # + counter
+       exp_dir = str(ee)
        mylogs.bp("merge")
        if merge:
            merge = map_param(param_map, merge, key=True)
@@ -1215,8 +1216,8 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
        if exp_conf and not new_exp_folder:
             output_dir = exp_output_dir 
        if merge:
-           # ee = args["expid"]
-           ee = mylogs.get_run_id(only_num=True) + counter
+           ee = args["expid"]
+           # ee = mylogs.get_run_id(only_num=True) + counter
            exp_file = args[merge]
            _output_dir = label + "-" + str(ee)
            _output_dir = _output_dir.strip("-")
@@ -2046,6 +2047,7 @@ def train(**kwargs):
     config.anneal_dir = model_args.anneal_dir # my option
     config.anneal_rate = anneal_rate # my option
     config.attend_target = model_args.attend_target
+    config.task_dropout = kwargs.get("task_dropout", False)
     config.prompt_out_dim = kwargs.get("out_dim", -1)
     config.num_target_prompts = num_target_prompts
     config.attend_private = use_private_prompts 
@@ -2318,6 +2320,8 @@ def train(**kwargs):
         prompt_hidden_size = kwargs.get("hidden_size", -1)
         prompt_non_linear = kwargs.get("non_linear", "gelu")
         prompt_out_dim = kwargs.get("out_dim", -1)
+        exp_info["num_layers"] = prompt_num_layers
+        exp_info["hidden_size"] = prompt_hidden_size
         for prompt in source_prompts: 
             encoder_name = prompt
             encoder_type = adapter_args.prompt_encoder_type
@@ -2859,6 +2863,16 @@ def train(**kwargs):
     private_prompt_learning_rate = model_args.private_prompt_learning_rate 
     if source_prompt_learning_rate is None:
         source_prompt_learning_rate = prompt_learning_rate 
+
+    if kwargs.get("adjust_slr", True):
+        source_prompt_learning_rate += (num_source_prompts-1)*0.02
+        source_prompt_learning_rate = min(source_prompt_learning_rate, 0.2)
+        kwargs["source_prompt_learning_rate"] = source_prompt_learning_rate
+    if kwargs.get("adjust_plr", True):
+        private_prompt_learning_rate += (num_source_prompts-1)*0.01
+        private_prompt_learning_rate = min(private_prompt_learning_rate, 0.1)
+        kwargs["private_prompt_learning_rate"] = private_prompt_learning_rate
+
     if target_prompt_learning_rate is None:
         target_prompt_learning_rate = prompt_learning_rate 
     if private_prompt_learning_rate is None:
@@ -3986,19 +4000,19 @@ def train(**kwargs):
                                     if torch.equal(task_mask,orig_task_mask):
                                         use_cache = True
                                         mylogs.minfo("Using cached predictions for " + task)
-
-                            save_paths[task] = save_to
-                            save_to = None #TODO 
+                                else:
+                                    save_paths[task] = save_to
+                                    save_to = None #TODO 
                             df, scores, golds, preds = evaluate_test(task, test_dataset, 
                                     save_to, ds_name, auto_task, gen_conf, use_cache = use_cache)
                             task_prompt = attn_pt.task_prompt  # shape [1, L, N]
                             task_tuned_prompts[task] = task_prompt
-                            if mask is None:
-                                no_mask_test_files[task] = save_to
-
                             df["src_path"] = op.join(mylogs.home, data_args.data_path, 
                                                     ds_conf,"test.tsv")
-                            dfs[task] = df
+                            if mask is None:
+                                no_mask_test_files[task] = save_to
+                                dfs[task] = df
+
                             mylogs.bp("rouge")
                             # TODO make it general not according to task names
                             if True: #"xAttr" in data_args.task_name: 
@@ -4116,9 +4130,10 @@ def train(**kwargs):
                                 tsim  = get_task_sim(target_embs = task_tuned_prompts,  
                                         model=model.nested_model, normalize = True)
                                 visualize_prompts_pca(task_tuned_prompts, folder=eval_folder)
-                                for task, df in dfs.items():
-                                    df["sim_src"] = avg_sim_src
-                                    df["sim_pvt"] = avg_sim_pvt
+                                if mask is None:
+                                    for task, df in dfs.items():
+                                        df["sim_src"] = avg_sim_src
+                                        df["sim_pvt"] = avg_sim_pvt
                             #visualize_prompts_tsne(task_tuned_prompts, folder=eval_folder)
                             #visualize_prompts_umap(task_tuned_prompts, folder=eval_folder)
                             if cross_pt:

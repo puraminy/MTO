@@ -32,11 +32,15 @@
   "rep_cols":[
     "expid",
     "expname",
+    "mapping",
     "folder",
     "output_dir",
     "max_train_samples",
     "template",
+    "sim_src",
+    "sim_pvt",
     "time",
+    "trial",
     "target_share",
     "source_prompts",
     "use_private_prompts",
@@ -67,6 +71,7 @@
     "route_method",
     "num_train_epochs",
     "num_target_prompts",
+    "trial",
     "norm_method",
     "sel_thresh",
     "num_prompt_tokens"

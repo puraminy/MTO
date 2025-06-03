@@ -368,6 +368,60 @@ class ResMLP(PromptEncoder):
         ret_embeds = F.embedding(index_list, running_weight)
         return ret_embeds
 
+class MLPPromptEncoder22(PromptEncoder):
+    enc_type = "mlp"
+
+    def __init__(self, num_layers=1, hidden_size=-1, 
+                 nl="gelu", out_dim=-1, in_dim=-1, **kwargs):
+        super().__init__(**kwargs)
+
+        embedding_dim = self.embedding_dim
+        if out_dim == -1:
+            out_dim = embedding_dim
+        if in_dim == -1:
+            in_dim = embedding_dim
+
+        # Activation function
+        nlf = None
+        if nl is not None:
+            nl = nl.lower()
+            if nl == "gelu":
+                nlf = torch.nn.GELU()
+            elif nl == "relu":
+                nlf = torch.nn.ReLU()
+            elif nl == "silu":
+                nlf = torch.nn.SiLU()
+            elif nl == "elu":
+                nlf = torch.nn.ELU()
+
+        layers = []
+
+        # Case 1: Single-layer linear encoder
+        if num_layers == 1 and hidden_size <= 1:
+            layers.append(torch.nn.Linear(in_dim, out_dim))
+
+        # Case 2: MLP with hidden layer(s)
+        else:
+            hsize = hidden_size if hidden_size > 1 else embedding_dim
+            layers.append(torch.nn.Linear(in_dim, hsize))
+            if nlf is not None:
+                layers.append(nlf)
+
+            if num_layers == 2:
+                layers.append(torch.nn.Linear(hsize, hsize))
+                if nlf is not None:
+                    layers.append(nlf)
+
+            layers.append(torch.nn.Linear(hsize, out_dim))
+
+        self.mlp = torch.nn.Sequential(*layers)
+
+    def forward_step(self, index_list, tids=None, training=True):
+        embs = self.embedding(self.net_inps)
+        running_weight = self.mlp(embs)
+        ret_embeds = F.embedding(index_list, running_weight)
+        return ret_embeds
+
 
 class MLPPromptEncoder(PromptEncoder):
     enc_type = "mlp"
@@ -382,6 +436,8 @@ class MLPPromptEncoder(PromptEncoder):
         if nl is not None:
             if nl.lower() == "gelu":
                 nlf = torch.nn.GELU()
+            elif nl.lower() == "id":
+                nlf = torch.nn.Identity()
             elif nl.lower() == "relu":
                 nlf = torch.nn.ReLU()
             elif nl.lower() == "silu":
