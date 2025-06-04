@@ -131,7 +131,7 @@ def normalize_scores(scores, method="soft",
         sel_thresh=None, 
         gen_thresh_min=None, 
         gen_thresh_max=None, 
-        resample=False, is_training=False, temperature=1):
+        resample=False, is_training=False, temperature=1, num_src_encoders=1):
 
     if method == "rb" or resample is True:
         scores = RelaxedBernoulli(temperature=gen_thresh_min or 0.0001, 
@@ -187,6 +187,8 @@ def normalize_scores(scores, method="soft",
             epsilon = 1e-8  # Adjust the value of epsilon as needed
             scores += epsilon
         scores = F.softmax(scores, -1)
+    elif method == "softenc":
+        scores = F.softmax(scores / max(1 /math.sqrt(num_src_encoders), 0.5), -1)
     elif method == "softemp":
         scores = F.softmax(scores / temperature, -1)
     elif method == "tanh":
@@ -956,7 +958,8 @@ class AttentivePromptEncoder(torch.nn.Module):
         if self.training and "before" in self.norm_method and self.attn_method != "const":
             method = self.norm_method.replace("before_","")
             attn_scores = normalize_scores(attn_scores, method, 
-                    is_training=self.training, temperature=self.temperature) 
+                    is_training=self.training, temperature=self.temperature, 
+                    num_src_encoders = self.num_src_encoders)
 
         self.update_entropy_loss(attn_scores)
         #if compose_method in ["cat","concat","catw"]: #,"pool","mpool"]:
@@ -1054,6 +1057,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                 attn_sel_scores = normalize_scores(attn_sel_scores, 
                     gen_norm_method,
                     gen_thresh_min=gen_thresh_min,
+                    num_src_encoders = self.num_src_encoders,
                     gen_thresh_max=gen_thresh_max, is_training=self.training)
 
         mylogs.bp("norm")
@@ -1061,6 +1065,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             method = self.norm_method.replace("after_","")
             attn_sel_scores = normalize_scores(attn_sel_scores, method, 
                     sel_thresh=self.sel_thresh, is_training=self.training, 
+                    num_src_encoders = self.num_src_encoders,
                     temperature=self.temperature)
 
         mylogs.bp("params")
@@ -1133,7 +1138,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                #alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
                #soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
                if self.target_share == -1 or self.target_share == 0:
-                   soft_prompts = beta * avg_prompts + alpha * private_prompt 
+                   soft_prompts = (beta * avg_prompts + alpha * private_prompt)/(alpha + beta)
                elif self.target_share == -5:
                    soft_prompts = avg_prompts + alpha * private_prompt 
                elif self.target_share < -5:

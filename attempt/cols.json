@@ -11,6 +11,7 @@
     "model_base",
     "model_temp",
     "template",
+    "trial",
     "method",
     "source_prompts",
     "add_prefix",
@@ -22,7 +23,9 @@
     "prefix"
   ],
   "ex_cols":[
-    "trial"
+  ],
+  "dim_cols":[
+    "num_target_prompts"
   ],
   "rep_cols2":[
     "model_base",

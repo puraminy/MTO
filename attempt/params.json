@@ -40,6 +40,7 @@
   "adjt":"adjust_temperature",
   "adjslr":"adjust_slr",
   "adjplr":"adjust_plr",
+  "adjalr":"adjust_alr",
   "adje":"adjust_epochs",
   "td":"task_dropout",
   "ftmpr":"fixed_temperature",

@@ -1867,7 +1867,6 @@ def train(**kwargs):
     ###### Collect experiment infos
     exp_info = {}
     exp_info["expid"] = kwargs.get("expid", None)
-    exp_info["attn_learning_rate"] = model_args.attn_learning_rate
     multi_tasking = False
     if len(data_args.task_name) > 1:
         exp_info["multi_single"] = "multi"
@@ -2827,9 +2826,19 @@ def train(**kwargs):
     gate_params = []
     prompt_params = []
     mylogs.bp("lr")
+    attn_learning_rate = model_args.attn_learning_rate
+
+    n = max(1, num_source_prompts)
+    if kwargs.get("adjust_alr", True):
+        scale = 1 / math.sqrt(n)
+        attn_learning_rate *= scale
+        attn_learning_rate = max(attn_learning_rate, 0.01)
+        attn_learning_rate = round(attn_learning_rate, 2)
+        kwargs["attn_learning_rate"] = attn_learning_rate
+
     attn_weight_decay = kwargs.get("attn_weight_decay", 0.1)
     gate_weight_decay = kwargs.get("gate_weight_decay", 0.1)
-    gate_learning_rate = kwargs.get("gate_learning_rate", model_args.attn_learning_rate)
+    gate_learning_rate = kwargs.get("gate_learning_rate", attn_learning_rate)
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
         if attn_pt is not None:
             for name, param in attn_pt.named_parameters():
@@ -2847,7 +2856,7 @@ def train(**kwargs):
         attn_params = set(attn_params)
         gate_params = set(gate_params)
         grouped_params.append({'params': list(attn_params), 
-            'lr': model_args.attn_learning_rate, "weight_decay": attn_weight_decay})
+            'lr': attn_learning_rate, "weight_decay": attn_weight_decay})
         grouped_params.append({'params': list(gate_params), 
             'lr': gate_learning_rate, "weight_decay": gate_weight_decay})
         
@@ -2864,13 +2873,17 @@ def train(**kwargs):
     if source_prompt_learning_rate is None:
         source_prompt_learning_rate = prompt_learning_rate 
 
+    n = max(1, num_source_prompts)
     if kwargs.get("adjust_slr", True):
-        source_prompt_learning_rate += (num_source_prompts-1)*0.02
-        source_prompt_learning_rate = min(source_prompt_learning_rate, 0.2)
+        scale = 1 + math.log(n)
+        source_prompt_learning_rate *= scale
+        source_prompt_learning_rate = round(min(source_prompt_learning_rate, 0.2),2)
         kwargs["source_prompt_learning_rate"] = source_prompt_learning_rate
+
     if kwargs.get("adjust_plr", True):
-        private_prompt_learning_rate += (num_source_prompts-1)*0.01
-        private_prompt_learning_rate = min(private_prompt_learning_rate, 0.1)
+        scale = 1 / (1 + math.log(n))
+        private_prompt_learning_rate *= scale
+        private_prompt_learning_rate = round(min(private_prompt_learning_rate, 0.1),2)
         kwargs["private_prompt_learning_rate"] = private_prompt_learning_rate
 
     if target_prompt_learning_rate is None:
@@ -2966,9 +2979,9 @@ def train(**kwargs):
     elif opt_type == "sep":
         optim, scheduler = get_optimizer(model, steps,
                 source_prompt_learning_rate, 
-                model_args.attn_learning_rate, 0.01)
+                attn_learning_rate, 0.01)
     elif opt_type in ["adam", "regular"]:
-        optim = AdamW(grouped_params, lr=learning_rate)
+        optim = AdamW(grouped_params)
     elif opt_type == "ada":
         optim = Adafactor(
             grouped_params,
