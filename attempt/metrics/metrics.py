@@ -73,6 +73,8 @@ TASK_TO_METRICS = {
                    "superglue-wsc.fixed": [accuracy],
                    "superglue-record": ["f1_score_with_invalid", "exact_match"],
                    "multi_nli": [accuracy],
+                   "multi-nli": [accuracy],
+                   "multinli": [accuracy],
                    "squad": ["exact_match", "f1_score_with_invalid"],
                    "snli": [accuracy],
                    "nq": ["exact_match", "f1_score_with_invalid"],
@@ -85,6 +87,7 @@ TASK_TO_METRICS = {
                    "scitail": [accuracy],
                    "amazon_polarity": [accuracy],
                    "yelp_polarity": [accuracy],
+                   "yelp-polarity": [accuracy],
                    "paws": [accuracy], }
 
 logger = getLogger(__name__)

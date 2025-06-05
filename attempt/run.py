@@ -994,11 +994,16 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            _vvv = [_vv[1]]
           #  continue
        values.append(_vvv)
-   var_dict = {k:n for k,n in zip(var_names, values)} 
+
+   priority_keys = ['@d_seed']
+   var_dict = {k: n for k, n in zip(var_names, values)}
+   var_dict = {k: var_dict[k] for k in priority_keys if k in var_dict} | {k: v for k, v in var_dict.items() if k not in priority_keys}
+
    if last_var:
        last_var = map_param(param_map, last_var)
        last_var = "@" + last_var
        var_dict[last_var] = var_dict.pop(last_var)
+
    _mvars = []
    mylogs.bp("mvar")
    if main_vars and "--" in main_vars:
@@ -2829,7 +2834,7 @@ def train(**kwargs):
     attn_learning_rate = model_args.attn_learning_rate
 
     n = max(1, num_source_prompts)
-    if kwargs.get("adjust_alr", True):
+    if cross_pt and kwargs.get("adjust_alr", True):
         scale = 1 / math.sqrt(n)
         attn_learning_rate *= scale
         attn_learning_rate = max(attn_learning_rate, 0.01)
@@ -2875,16 +2880,31 @@ def train(**kwargs):
 
     n = max(1, num_source_prompts)
     if kwargs.get("adjust_slr", True):
-        scale = 1 + math.log(n)
-        source_prompt_learning_rate *= scale
-        source_prompt_learning_rate = round(min(source_prompt_learning_rate, 0.2),2)
-        kwargs["source_prompt_learning_rate"] = source_prompt_learning_rate
+        base_slr = kwargs.get("base_slr", 0.05)
+        current_slr = source_prompt_learning_rate
+        cap = kwargs.get("slr_cap", 0.15)
 
-    if kwargs.get("adjust_plr", True):
-        scale = 1 / (1 + math.log(n))
+        # Curve factor: always ≥ 1
+        mod = max(base_slr / current_slr, 1.0)  # flattens if slr is high
+
+        # Scale increases with n, but more so if slr is low
+        scale = 1 + math.log(n) * mod
+
+        # Final adjusted slr, but never below current_slr
+        adjusted_slr = current_slr * scale
+        source_prompt_learning_rate = min(max(adjusted_slr, current_slr), cap)
+        kwargs["source_prompt_learning_rate"] = round(source_prompt_learning_rate,3)
+
+    adjust_plr = kwargs.get("adjust_plr", True)
+    if cross_pt and adjust_plr: 
+        if adjust_plr == "asc":
+            scale = (1 + math.log(n))
+        else:
+            scale = 1 / (1 + math.log(n))
         private_prompt_learning_rate *= scale
-        private_prompt_learning_rate = round(min(private_prompt_learning_rate, 0.1),2)
-        kwargs["private_prompt_learning_rate"] = private_prompt_learning_rate
+        private_prompt_learning_rate = min(private_prompt_learning_rate, 0.1)
+        private_prompt_learning_rate = max(private_prompt_learning_rate, 0.01)
+        kwargs["private_prompt_learning_rate"] = round(private_prompt_learning_rate,3)
 
     if target_prompt_learning_rate is None:
         target_prompt_learning_rate = prompt_learning_rate 

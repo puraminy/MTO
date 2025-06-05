@@ -521,7 +521,8 @@ class AbstractTask(abc.ABC):
                 df = df.dropna(how='all')
                 self.df = df
                 dataset = Dataset.from_pandas(df)
-                do_subsample = False
+                if len(df) > n_obs:
+                    do_subsample = True
                 do_filter = False
                 do_map = True
                 save_ds = False
@@ -3023,7 +3024,7 @@ TASK_MAPPING = OrderedDict(
         ("common-gen", CommonGen),
         ("winogrande", WinoGrande),
         ("scitail", SciTail),
-        ('yelp', YelpPolarity),
+        ('yelp-polarity', YelpPolarity),
         ('amazon', Amazon_Polarity),
         ('paws', PAWS),
         ('atomic', Atomic),

@@ -48,7 +48,7 @@ from PIL import ImageChops
 #import attempt.metrics.metrics as mets
 import scipy
 import math
-from reports import *
+import reports
 
 matplotlib.rcParams.update({
     'font.size': 12,
@@ -59,52 +59,6 @@ matplotlib.rcParams.update({
     'legend.fontsize': 10,
     'grid.alpha': 0.4,
 })
-
-def line_2_plot(df, x_col, y_col, cat_col, x_label, y_label='Accuracy', get_input=False):
-    df = df.sort_values(x_col)
-    markers = ['o', 's']
-    colors = ['orange', 'blue','green', 'brown', 'cyan']
-    cats = df[cat_col].unique()
-    mapping = {cat: (rowinput(cat + ":", cat) if get_input else cat) for cat in cats}
-
-    if get_input:
-        df[cat_col] = df[cat_col].map(mapping)
-
-    for i, cat in enumerate(cats):
-        filtered_df = df[df[cat_col] == mapping[cat]]
-        plt.plot(filtered_df[x_col], filtered_df[y_col], marker=markers[i % len(markers)],
-                 label=mapping[cat])
-
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
-def line_plot(df2, selected_cols, measure_cols, x_label, y_label='Accuracy'):
-    col = selected_cols[0]
-    measure = measure_cols[0]
-
-    summary2 = df2.groupby(col)[measure].agg(['mean', 'std']).reset_index()
-
-    plt.figure(figsize=(8, 5))
-
-    # Plot mean and error bars
-    plt.plot(summary2[col], summary2['mean'], '-o', label='Mean', color='green')
-    plt.errorbar(summary2[col], summary2['mean'], yerr=summary2['std'], fmt='o', capsize=5, 
-                 ecolor='black', label='Std Dev')
-
-    # Use larger font sizes for publication-quality output
-    plt.xlabel(x_label) #, fontsize=18, fontweight='bold')
-    plt.ylabel(y_label) # + ' ', fontsize=18, fontweight='bold')
-    plt.xticks(summary2[col]) #, fontsize=16)
-    #plt.yticks(fontsize=16)
-    plt.grid(True)
-    #plt.legend(fontsize=16)
-    plt.tight_layout()
-    plt.show()
 
 def cross_task(df, fname):
     task_order = ['cola', 'mnli', 'qqp1', 'qnli', 'rte', 'stsb', 'qqp', 'mrpc', 'sst2']
@@ -519,7 +473,7 @@ def plot_bar(rep, folder, sel_col):
     plt.savefig(pname)
     return pname
 
-def score_colors(df,row,col, default=None):
+def measure_color(df,row,col, default=None):
     try:
         df[col] = df[col].astype(float)
     except:
@@ -527,7 +481,17 @@ def score_colors(df,row,col, default=None):
     max_val = df[col].max()
     if df.iloc[row][col] == max_val:
         return 136
-    return 247
+    return default
+
+def score_colors(df,row,col, default=247):
+    try:
+        df[col] = df[col].astype(float)
+    except:
+        return default
+    max_val = df[col].max()
+    if df.iloc[row][col] == max_val:
+        return 136
+    return default
 
 def pivot_colors(df,row,col, default=None):
     rel_col = "n-" + col
@@ -682,11 +646,12 @@ def summarize(df, rep_cols=None, score_col=None, rename =True):
             all_cols = json.load(f)
         if 'sel_cols' in all_cols:
             sel_cols = all_cols['sel_cols'] 
-            dim_cols = all_cols['dim_cols'] if "dim_cols" in all_cols else []
-            measure_cols = all_cols['measure_cols'] if "measure_cols" in all_cols else []
-            rep_cols = all_cols['rep_cols'] if "rep_cols" in all_cols else sel_cols
-            extra_cols = all_cols['extra_cols'] if "extra_cols" in all_cols else []
-            exclude_cols = all_cols['ex_cols'] if "ex_cols" in all_cols else []
+        dim_cols = all_cols['dim_cols'] if "dim_cols" in all_cols else []
+        measure_cols = all_cols['measure_cols'] if "measure_cols" in all_cols else []
+        cat_cols = all_cols['cat_cols'] if "cat_cols" in all_cols else []
+        rep_cols = all_cols['rep_cols'] if "rep_cols" in all_cols else sel_cols
+        extra_cols = all_cols['extra_cols'] if "extra_cols" in all_cols else []
+        exclude_cols = all_cols['ex_cols'] if "ex_cols" in all_cols else []
         if "compose_method" in df:
             rep_cols = rep_cols + extra_cols
         if not "compose_method" in df:
@@ -1034,6 +999,8 @@ class MyDF:
     sel_cols = []
     selected_cols = []
     measure_cols = []
+    pcols = []
+    cat_cols = []
     dim_cols = []
     cur_row = 0
     cur_col = -1
@@ -1044,7 +1011,7 @@ class MyDF:
     is_filtered = False
     def __init__(self, df, context, sel_cols, cur_col,info_cols, 
             sel_rows, sel_row, cur_row, 
-            left, group_col, selected_cols, measure_cols, dim_cols, sort, is_filtered, cond_set, **kwargs):
+            left, group_col, selected_cols, measure_cols, pcols, dim_cols, cat_cols, sort, is_filtered, cond_set, **kwargs):
         self.df = df
         self.context = context
         self.sel_cols = sel_cols
@@ -1057,6 +1024,8 @@ class MyDF:
         self.group_col = group_col
         self.selected_cols = selected_cols
         self.measure_cols = measure_cols
+        self.pcols = pcols
+        self.cat_cols = cat_cols
         self.dim_cols = dim_cols
         self.sort = sort
         self.is_filtered = is_filtered
@@ -1162,7 +1131,7 @@ def show_df(df, summary=False):
         if not cur_df:
             cur_df = MyDF(df, context, sel_cols, cur_col,info_cols, 
                 sel_rows, sel_row, cur_row, left, group_col, 
-                selected_cols, measure_cols, dim_cols, sort, is_filtered, cond_set)
+                selected_cols, measure_cols, pcols, dim_cols, cat_cols, sort, is_filtered, cond_set)
         back.append(cur_df)
         general_keys["b"] = "back"
 
@@ -1208,6 +1177,7 @@ def show_df(df, summary=False):
     fig = None
     measure_cols = []
     dim_cols = []
+    cat_cols = []
     if "Z" in hotkey:
         df["m_score"] = df["rouge_score"]
     context = dfname
@@ -1242,11 +1212,12 @@ def show_df(df, summary=False):
 
     #sel_cols =  load_obj("sel_cols", context, [])
     #info_cols = load_obj("info_cols", context, [])
-    all_cols = {}
+    # cccccccccccccccccccccc
     file_dir = Path(__file__).parent
     doc_dir = file_dir # "/home/ahmad/findings" #os.getcwd() 
     note_dir = os.path.join(doc_dir, "notes")
     Path(note_dir).mkdir(exist_ok=True, parents=True)
+    all_cols = {}
     with open(os.path.join(file_dir, 'cols.json'),'r') as f:
         all_cols = json.load(f)
 
@@ -1258,6 +1229,10 @@ def show_df(df, summary=False):
         index_cols = all_cols['index_cols']
         extra_cols = all_cols['extra_cols'] if "extra_cols" in all_cols else []
         exclude_cols = all_cols['ex_cols'] if "ex_cols" in all_cols else []
+    dim_cols = all_cols['dim_cols'] if "dim_cols" in all_cols else []
+    measure_cols = all_cols['measure_cols'] if "measure_cols" in all_cols else []
+    pcols = all_cols['pcols'] if "pcols" in all_cols else pcols
+    cat_cols = all_cols['cat_cols'] if "cat_cols" in all_cols else []
     if "compose_method" in df:
         rep_cols = rep_cols + extra_cols
     #if not "compose_method" in df:
@@ -1437,20 +1412,28 @@ def show_df(df, summary=False):
                        elif sel_col in selected_cols:
                           cell_color = selected_col_color
                        elif sel_col in measure_cols:
-                          cell_color = WARNING_COLOR 
+                          cell_color = measure_color(df, ii, sel_col, default=HL_COLOR) 
                        elif sel_col in dim_cols:
                           cell_color = MSG_COLOR 
+                       elif sel_col in cat_cols:
+                          cell_color = WARNING_COLOR 
+                       elif sel_col in pcols:
+                          cell_color = score_colors(df, ii, sel_col, default=INPUT_COLOR)
                        else:
                           cell_color = sel_col_color
                    else:
-                       if ii in sel_rows:
-                          cell_color = MSG_COLOR
-                       elif sel_col in selected_cols:
+                       if sel_col in selected_cols:
                           cell_color = selected_col_color
+                       elif ii in sel_rows:
+                          cell_color = MSG_COLOR
                        elif sel_col in measure_cols:
-                          cell_color = WARNING_COLOR 
+                          cell_color = measure_color(df, ii, sel_col, default=HL_COLOR) 
                        elif sel_col in dim_cols:
                           cell_color = MSG_COLOR 
+                       elif sel_col in cat_cols:
+                          cell_color = WARNING_COLOR 
+                       elif sel_col in pcols:
+                          cell_color = score_colors(df, ii, sel_col, default=INPUT_COLOR)
                        elif pp == _cur_row:
                           cell_color = sel_row_color
                        elif sel_col in cond_colors:
@@ -1728,15 +1711,16 @@ def show_df(df, summary=False):
             _sel_col = sel_cols[cur_col]
             if not df.empty:
                 _sel_val = df.iloc[sel_row][_sel_col]
-                infos.append("{},{}:{}".format(sel_row, _sel_col, _sel_val))
+                infos.append("rows: {}".format(len(df)))
                 show_rest = type(_sel_val) == str and len(_sel_val) > 50
                 if show_infos and not show_rest:
+                    infos.append("{}/{}  {}:{}".format(sel_row, len(df), _sel_col, _sel_val))
                     if "query" in df.iloc[sel_row]:
                         _sel_val = df.iloc[sel_row]["query"]
                     else:
                         _, _sel_val = get_sel_rows(df, col="query", from_main=True) 
                     infos.append("query:{}".format(_sel_val))
-                    infos.append("-------------------------")
+                    #infos.append("-------------------------")
                     if "resp" in df.iloc[sel_row]:
                         _sel_val = df.iloc[sel_row]["resp"]
                     else:
@@ -1749,8 +1733,8 @@ def show_df(df, summary=False):
                 mean = df[c].mean()
                 _info = f"Mean {c}:" + "{:.2f}".format(mean)
                 infos.append(_info)
-        infos.append("-------------------------")
         if show_consts:
+            infos.append("-------------------------")
             consts["len"] = str(len(df))
             consts["root"] =str([Path(root_path).stem]*5)
             consts["context"] = context
@@ -1767,7 +1751,7 @@ def show_df(df, summary=False):
                 if type(val) == list:
                     val = "-".join(val)
                 infos.append("{:<5}:{}".format(key,val))
-        if show_infos or show_rest or show_consts or show_extra:
+        if infos or show_rest or show_consts or show_extra:
             info_lines = change_info(infos)
         try:
             prev_char = chr(ch)
@@ -1909,11 +1893,15 @@ def show_df(df, summary=False):
         if ch == 25:  # Ctrl+Y is ASCII 25
             ff = "tt-" + mylogs.now # df.iloc[sel_row]["prompts_conf"].lower()
             #ff =rowinput("file name to save:", ff)
-            selected_data = df[selected_cols]
+            cols = selected_cols
+            if not selected_cols:
+                cols = sel_cols
+            selected_data = df.iloc[sel_rows][cols]
             #.to_csv("/home/ahmad/Desktop/CrossPT/"+ ff +".tsv",
             #        sep='\t', index=False)
             data_string = selected_data.to_csv(sep='\t', index=False) 
             pyperclip.copy(data_string)  # Copy to clipboard
+            show_msg("Data frame was copied")
         if char in ["+","-","*","/"] and prev_char == "x":
             _inp=df.iloc[sel_row]["input_text"]
             _prefix=df.iloc[sel_row]["prefix"]
@@ -1982,7 +1970,20 @@ def show_df(df, summary=False):
             consts["measure_cols"] = measure_cols
             cur_col += 1
             mbeep()
-            cmd = "line"
+            # cmd = "line"
+        elif char  == "T":
+            cols = [sel_cols[cur_col]]
+            for col in cols:
+                if col in dim_cols:
+                    dim_cols.remove(col)
+            for col in cols:
+                if col in cat_cols:
+                    cat_cols.remove(col)
+                else:
+                    cat_cols.append(col)
+            consts["cat_cols"] = cat_cols
+            cur_col += 1
+            mbeep()
         elif char  == "X":
             cols = [sel_cols[cur_col]]
             for col in cols:
@@ -2529,15 +2530,17 @@ def show_df(df, summary=False):
             context = "grouping"
             shortkeys["grouping"] = {"m":"show mean","s":"show std"}
 
-            cols = selected_cols.copy()
             scol = sel_cols[cur_col]
 
-            if not selected_cols:
-                #cols = ["label", "max_train_samples"]
-                cols = sel_cols[cur_col]
-            for col in measure_cols:
+            cols = []
+            if not selected_cols and not dim_cols and not cat_cols:
+                cols = [scol]
+
+            cols += selected_cols + dim_cols + cat_cols
+            for col in cols:
                 if not col in df:
-                    measure_cols.remove(col)
+                    cols.remove(col)
+
             if len(cols) > 0:
                 # Determine the target columns for aggregation
                 target_col = ["All"] if "All" in df and not measure_cols else measure_cols
@@ -2559,8 +2562,10 @@ def show_df(df, summary=False):
 
                 sel_cols = list(df.columns)
                 cond_colors["All_mean"] = score_colors
-            # selected_cols = []
-            measure_cols = ["All_mean"]
+            measure_cols = []
+            for col in df:
+                if "_mean" in col:
+                    measure_cols.append(col)
             left = 0
         elif char in ["g"]: #, "u"]:
             context = "group_mode"
@@ -3408,8 +3413,12 @@ def show_df(df, summary=False):
             cond_set = {}
             keep_cols = []
             measure_cols = []
+            cat_cols = []
+            dim_cols = []
             if prev_char == "x":
-                dim_cols = []
+                dim_cols = all_cols['dim_cols'] if "dim_cols" in all_cols else []
+                measure_cols = all_cols['measure_cols'] if "measure_cols" in all_cols else []
+                cat_cols = all_cols['cat_cols'] if "cat_cols" in all_cols else []
             consts = {}
             visual_mode = False
         elif char == "v":
@@ -3572,7 +3581,7 @@ def show_df(df, summary=False):
            df = pd.concat(dfs, ignore_index=True)
            sel_cols = df.columns
            group_col = "prefix"
-        if cmd.startswith("cross") or char == "t" or char == "T":
+        if cmd.startswith("cross") or char == "t":
             backit(df, sel_cols)
             eid = df.iloc[sel_row]['eid'] 
             dfs = []
@@ -3580,7 +3589,7 @@ def show_df(df, summary=False):
             df = df.sort_values(by="mask_type", ascending=True)
             if "prefix" in df and context != "cross":
                 pfx_cols = df["prefix"].unique()
-            elif selected_cols or char == "T":
+            elif selected_cols:
                 pfx_cols = len(df)*[selected_cols[0] if selected_cols else sel_cols[cur_col]]
                 indexes = list(range(len(df)))
             else:
@@ -3792,6 +3801,12 @@ def show_df(df, summary=False):
 
                plt.show()
                # char = "H"
+        if hasattr(reports, cmd):
+            func = getattr(reports, cmd)
+            if callable(func):
+                func(df, dim_cols, measure_cols, cat_cols)
+            else:
+                show_msg(f"'{cmd}' is not callable.")
         if char == "H":
             name = ax.get_title()
             pname = rowinput("Plot name:", name[:30])
@@ -3969,9 +3984,10 @@ def show_df(df, summary=False):
                 measure_cols = ['All']
             if not dim_cols:
                 dim_cols = [cur_sel_col]
-            if cur_sel_col in selected_cols:
-                selected_cols.remove(cur_sel_col)
-            cols = dim_cols + measure_cols
+            cols = dim_cols + measure_cols + cat_cols
+            for col in cols:
+                if not col in df:
+                    cols.remove(col)
             x_label = cols[0]
             y_label = measure_cols[0]
             if 'input' in cmd:
@@ -3979,13 +3995,13 @@ def show_df(df, summary=False):
             if 'input' in cmd:
                 y_label = rowinput("Y Label:", default= "Mean Accuracy")
             if "2" in cmd:
-                line_2_plot(df[cols], 
+                reports.line_2_plot(df[cols], 
                         x_col = dim_cols[0],
                         y_col = measure_cols[0], 
-                        cat_col = selected_cols[0], 
+                        cat_col = cat_cols[0], 
                         x_label = x_label, y_label = y_label, get_input= "input" in cmd)
             else:
-                line_plot(df[cols], cols, measure_cols, x_label, y_label)
+                reports.line_plot(df[cols], cols, measure_cols, x_label, y_label)
         elif cmd.startswith("bar") or cmd.startswith("line"):
             show_extra = True
             consts["columns"] = sel_cols 
@@ -4040,6 +4056,7 @@ def show_df(df, summary=False):
                 g.add_legend(loc='upper right', title_fontsize=14) 
                 plt.tight_layout()
                 plt.show()
+
         if cmd.startswith("sbar"):
             #tdf = df.groupby(selected_cols + ['model_base'])['All'].mean().unstack().reset_index()
             if not selected_cols:
@@ -5165,14 +5182,14 @@ def change_info(infos):
     h,w = info_bar.getmaxyx()
     w = 80
     lnum = 0
-    infos.insert(0, "-"*30)
+    # infos.insert(0, "-"*30)
     for msg in infos:
         lines = textwrap.wrap(msg, width=w, placeholder=".")
         for line in lines: 
             mprint(str(line).replace("@","   "), info_bar, color=HL_COLOR)
             lnum += 1
     rows,cols = std.getmaxyx()
-    info_bar.noutrefresh(0,0, rows -lnum - 1,0, rows-1, cols - 1)
+    info_bar.noutrefresh(0,0, rows -lnum,0, rows-1, cols - 1)
     return lnum
 
 si_hash = {}

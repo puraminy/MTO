@@ -536,11 +536,12 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.task_prompt_ids = torch.tensor(task_prompt_ids, device=device)
         intrinsic_dim = 200
         if self.target_share is not None:
-            b = 0 # self.target_share  # or any other float
             #self.target_router = nn.Linear(..., bias=True)
             #self.target_router.bias.data.fill_(-2.0)
+            mean = 0.0
+            std = 0.02  # Small standard deviation to keep values near zero
             self.target_router = nn.Parameter(
-               torch.full((attend_num,), float(b), device=device)
+                torch.randn(attend_num, device=device) * std + mean
             )
 
         if self.prompt_tuning:
@@ -1137,7 +1138,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             if compose_method == "wsp1": 
                #alpha = torch.sigmoid(self.alpha_raw)  # shape: scalar in (0, 1)
                #soft_prompts = (1-alpha) * avg_prompts + alpha * private_prompt 
-               if self.target_share == -1 or self.target_share == 0:
+               if self.target_share == -1 or self.target_share == 0 or self.target_share == -10:
                    soft_prompts = (beta * avg_prompts + alpha * private_prompt)/(alpha + beta)
                elif self.target_share == -5:
                    soft_prompts = avg_prompts + alpha * private_prompt 
