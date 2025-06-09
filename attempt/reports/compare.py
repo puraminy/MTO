@@ -19,20 +19,15 @@ def open_pdf(path):
 
 
 
-def line_2_plot(df, x_col, y_col, cat_col, x_label, y_label='Accuracy', get_input=False):
+def line_2_plot(df, x_col, y_col, cat_col, x_label, y_label='Accuracy'):
     df = df.sort_values(x_col)
     markers = ['o', 's']
     colors = ['orange', 'blue','green', 'brown', 'cyan']
     cats = df[cat_col].unique()
-    mapping = {cat: (rowinput(cat + ":", cat) if get_input else cat) for cat in cats}
-
-    if get_input:
-        df[cat_col] = df[cat_col].map(mapping)
-
     for i, cat in enumerate(cats):
-        filtered_df = df[df[cat_col] == mapping[cat]]
+        filtered_df = df[df[cat_col] == cat]
         plt.plot(filtered_df[x_col], filtered_df[y_col], marker=markers[i % len(markers)],
-                 label=mapping[cat])
+                 label=cat)
 
     plt.xlabel(x_label)
     plt.ylabel(y_label)
@@ -42,13 +37,23 @@ def line_2_plot(df, x_col, y_col, cat_col, x_label, y_label='Accuracy', get_inpu
     tehran = timezone('Asia/Tehran')
     now = datetime.now(tehran)
     now = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
-    fname = col + "-" + measure + ".pdf"
+    fname = x_col + "-" + y_col + ".pdf"
     if Path(fname).is_file():
         shutil.move(fname, fname + now + ".pdf")
     plt.savefig(fname, bbox_inches='tight')
     open_pdf(fname)
 
 def line_plot(df, selected_cols, measure_cols, x_label, y_label='Accuracy'):
+    matplotlib.rcParams.update({
+        'font.size': 12,
+        'figure.dpi': 300,
+        'axes.titlesize': 14,
+        'axes.labelsize': 12,
+        'lines.linewidth': 2,
+        'legend.fontsize': 10,
+        'grid.alpha': 0.4,
+    })
+
     col = selected_cols[0]
     measure = measure_cols[0]
 

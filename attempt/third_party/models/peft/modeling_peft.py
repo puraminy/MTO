@@ -127,11 +127,27 @@ class Anneal:
         value = self.anneal(self.cur_step)
         return value
 
+import torch
+
+def blendmax(z, k, mode='sigmoid', k0=3, a=1.0):
+    if mode == 'sigmoid':
+        # Ensure the input to sigmoid is a Tensor
+        lamb = torch.sigmoid(torch.tensor(a * (k - k0), dtype=z.dtype, device=z.device))
+    elif mode == 'linear':
+        k_min, k_max = 0, 8
+        lamb = torch.clamp(torch.tensor((k - k_min) / (k_max - k_min), dtype=z.dtype, device=z.device), 0.0, 1.0)
+    elif mode == 'step':
+        lamb = torch.tensor(1.0 if k >= k0 else 0.0, dtype=z.dtype, device=z.device)
+
+    soft = torch.nn.functional.softmax(z, dim=-1)
+    sparse = sparsemax(z, dim=-1)  # You must implement or import sparsemax
+    return lamb * sparse + (1 - lamb) * soft
+
 def normalize_scores(scores, method="soft", 
         sel_thresh=None, 
         gen_thresh_min=None, 
         gen_thresh_max=None, 
-        resample=False, is_training=False, temperature=1, num_src_encoders=1):
+        resample=False, is_training=False, temperature=1, softenc_temperature=1):
 
     if method == "rb" or resample is True:
         scores = RelaxedBernoulli(temperature=gen_thresh_min or 0.0001, 
@@ -180,6 +196,8 @@ def normalize_scores(scores, method="soft",
        pass 
     elif method == "sparse":
         scores = sparsemax(scores, dim=-1)
+    elif method == "blendmax":
+        scores = blendmax(scores, softenc_temperature, mode="linear")
     elif method == "direct" or method == "soft" or method == "srelu":
         if is_training:
             #scores=scores / scores.sum(dim=-1, keepdim=True) 
@@ -188,7 +206,14 @@ def normalize_scores(scores, method="soft",
             scores += epsilon
         scores = F.softmax(scores, -1)
     elif method == "softenc":
-        scores = F.softmax(scores / max(1 /math.sqrt(num_src_encoders), 0.5), -1)
+        t = max(1/math.sqrt(softenc_temperature), 0.3)
+        t = min(t,1)
+        scores = F.softmax(scores / t, -1)
+    elif method == "softenctemp":
+        temperature = max(temperature, 1)
+        t = max(temperature/math.sqrt(softenc_temperature), 0.3)
+        t = min(t,1)
+        scores = F.softmax(scores / t, -1)
     elif method == "softemp":
         scores = F.softmax(scores / temperature, -1)
     elif method == "tanh":
@@ -201,6 +226,9 @@ def normalize_scores(scores, method="soft",
         scores = F.softmax(scores, 0)
     elif method == "sigmoid":
         scores = torch.sigmoid(scores)  
+    elif method == "signorm":
+        scores = torch.sigmoid(scores)  
+        scores=scores / scores.sum(dim=-1, keepdim=True) 
     elif method == "sigtemp":
         scores = torch.sigmoid(scores / temperature)  
     elif method == "sign":
@@ -294,6 +322,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.use_private_prompts = False
         self.embedding_dim = model_dim = config.d_model
         self.num_src_encoders = 0
+        self.num_shared_prompts = 0
         self.source_encoders_idx = None
         self.target_encoders_idx = None
         self.target_prompt_ids = []
@@ -440,8 +469,11 @@ class AttentivePromptEncoder(torch.nn.Module):
 
         self.prompt_names = ["input"] + [x.name for x in src_tgt_encoders]
         self.num_src_encoders = 0
+        self.num_shared_prompts = 0
         if source_prompts:
             self.num_src_encoders = len(source_prompts) + 1 # one for input 
+        if prompt_encoders:
+            self.num_shared_prompts = sum(1 for p in prompt_encoders if p.is_source)
 
         target_prompt_ids = []
         task_prompt_ids = []
@@ -1058,7 +1090,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                 attn_sel_scores = normalize_scores(attn_sel_scores, 
                     gen_norm_method,
                     gen_thresh_min=gen_thresh_min,
-                    num_src_encoders = self.num_src_encoders,
+                    softenc_temperature = self.num_shared_prompts,
                     gen_thresh_max=gen_thresh_max, is_training=self.training)
 
         mylogs.bp("norm")
@@ -1066,7 +1098,7 @@ class AttentivePromptEncoder(torch.nn.Module):
             method = self.norm_method.replace("after_","")
             attn_sel_scores = normalize_scores(attn_sel_scores, method, 
                     sel_thresh=self.sel_thresh, is_training=self.training, 
-                    num_src_encoders = self.num_src_encoders,
+                    softenc_temperature = self.num_shared_prompts,
                     temperature=self.temperature)
 
         mylogs.bp("params")

@@ -637,7 +637,7 @@ def get_main_vars(df):
         main_vars = list(dict.fromkeys(mvars))
     return main_vars
 
-def summarize(df, rep_cols=None, score_col=None, rename =True):
+def summarize(df, rep_cols=None, score_col=None, rename =True, pcols=[]):
     mdf = df #main_df
     pivot_cols = ["prefix"]
     if not rep_cols:
@@ -685,6 +685,10 @@ def summarize(df, rep_cols=None, score_col=None, rename =True):
         gcol += ["eid"] 
     #gcol.remove("eid")
     #gcol.remove("folder")
+    # Define the values you want to keep
+    if pcols:
+        for col in pivot_cols:
+            mdf = mdf[mdf[col].isin(pcols)]
     mdf[gcol] = mdf[gcol].fillna('none')
     pdf = mdf.pivot_table(index=gcol, columns=pivot_cols, 
             values=score_cols, aggfunc='mean', margins=True)
@@ -885,7 +889,8 @@ def add_cols(df):
         df["bert_score"] = df["bert_score"]*100 
     if True: #"compose_method" in df:
         df["expid"] = df["exp_name"].str.split("-").str[1]
-        df["num_target_prompts"] = df["num_target_prompts"] - 1 
+        if "num_target_prompts" in df and False:
+           df["num_target_prompts"] = df["num_target_prompts"] - 1 
         # if not "expid" in df:
         df["expid"] = df["expid"].astype(str).str.replace("_num", "", regex=False)
         df["expname"] = df["exp_name"].str.split("-").str[1]
@@ -1185,7 +1190,7 @@ def show_df(df, summary=False):
     seq = ""
     reset = False
     prev_idea = ""
-    pcols = [] #pivot unique cols
+    pcols = load_obj("pcols", "main", []) #pivot unique cols
     cond_colors = {} # a dictionary of functions
     back_sel_cols = []
     all_sel_cols = []
@@ -1902,7 +1907,7 @@ def show_df(df, summary=False):
             data_string = selected_data.to_csv(sep='\t', index=False) 
             pyperclip.copy(data_string)  # Copy to clipboard
             show_msg("Data frame was copied")
-        if char in ["+","-","*","/"] and prev_char == "x":
+        if char in ["+","-","*","/"] and prev_char == "z":
             _inp=df.iloc[sel_row]["input_text"]
             _prefix=df.iloc[sel_row]["prefix"]
             _pred_text=df.iloc[sel_row]["pred_text1"]
@@ -1971,6 +1976,23 @@ def show_df(df, summary=False):
             cur_col += 1
             mbeep()
             # cmd = "line"
+        elif char  == "P":
+            cols = [sel_cols[cur_col]]
+            for col in cols:
+                if col in dim_cols:
+                    dim_cols.remove(col)
+            for col in cols:
+                if col in measure_cols:
+                    measure_cols.remove(col)
+            for col in cols:
+                if col in pcols:
+                    pcols.remove(col)
+                else:
+                    pcols.append(col)
+            consts["pcols"] = pcols 
+            cur_col += 1
+            save_obj(pcols, "pcols", "main")
+            mbeep()
         elif char  == "T":
             cols = [sel_cols[cur_col]]
             for col in cols:
@@ -2072,7 +2094,7 @@ def show_df(df, summary=False):
             else:
                 cond_set[col] = f"(df['{col}'] == {val})"                
             # show_consts = True
-        elif char == "=" and prev_char == "x":
+        elif char == "=" and prev_char == "z":
             col = info_cols[-1]
             sel_cols.insert(cur_col, col)
         elif char == ">":
@@ -2100,7 +2122,7 @@ def show_df(df, summary=False):
                 if not col in sel_cols:
                     sel_cols.insert(0, col)
                     save_obj(sel_cols, "sel_cols", context)
-        elif char in ["W"] and prev_char == "x":
+        elif char in ["W"] and prev_char == "z":
             save_df(df)
         elif char == "B":
             scorers = settings.get("scorer","bert")
@@ -2303,7 +2325,7 @@ def show_df(df, summary=False):
             with open(conf,"r") as f:
                 infos = f.readlines()
             subwin(infos)
-        elif char == "l" and prev_char == "x" and False:
+        elif char == "l" and prev_char == "z" and False:
             exp=df.iloc[sel_row]["eid"]
             exp = str(exp)
             logs = glob(str(exp) + "*.log")
@@ -2319,10 +2341,10 @@ def show_df(df, summary=False):
             info_cols.append(col)
             save_obj(sel_cols, "sel_cols", context)
             save_obj(info_cols, "info_cols", context)
-        elif char == "N" and prev_char == "x":
+        elif char == "N" and prev_char == "z":
             backit(df,sel_cols)
             sel_cols=["pred_max_num","pred_max", "tag","prefix","rouge_score", "num_preds","bert_score"]
-        elif (char == "j" and not prev_char == "x" and hk=="G"):
+        elif (char == "j" and not prev_char == "z" and hk=="G"):
             backit(df,sel_cols)
             exp=df.iloc[sel_row]["fid"]
             cond = f"(main_df['{FID}'] == '{exp}')"
@@ -2349,7 +2371,7 @@ def show_df(df, summary=False):
                     orig_tag_cols.append(col)
             save_obj(sel_cols, "sel_cols", context)
             save_obj(info_cols, "info_cols", context)
-        elif char in ["o","O"] and prev_char == "x":
+        elif char in ["o","O"] and prev_char == "z":
             inp = df.loc[df.index[sel_row],["prefix", "input_text"]]
             df = df[(df.prefix != inp.prefix) | 
                     (df.input_text != inp.input_text)] 
@@ -2383,7 +2405,7 @@ def show_df(df, summary=False):
             backit(df, sel_cols)
             sel_cols = ["prefix", "input_text", "target_text", "sel"]
             df = sel_df
-        elif char in ["h","v"] and prev_char == "x":
+        elif char in ["h","v"] and prev_char == "z":
             _cols = ["template", "model", "prefix"]
             _types = ["l1_decoder", "l1_encoder", "cossim_decoder", "cossim_encoder"]
             canceled, col = list_values(_cols)
@@ -2451,7 +2473,7 @@ def show_df(df, summary=False):
             fav_df = fav_df.append(df.iloc[sel_row])
             mbeep()
             fav_df.to_csv(fav_path, sep="\t", index=False)
-        elif char == "Z" and prev_char == "x":
+        elif char == "Z" and prev_char == "z":
             main_df["m_score"] = main_df["rouge_score"]
             df = main_df
             hotkey = "CGR"
@@ -2533,7 +2555,7 @@ def show_df(df, summary=False):
             scol = sel_cols[cur_col]
 
             cols = []
-            if not selected_cols and not dim_cols and not cat_cols:
+            if not selected_cols and not dim_cols:
                 cols = [scol]
 
             cols += selected_cols + dim_cols + cat_cols
@@ -2619,7 +2641,7 @@ def show_df(df, summary=False):
         elif char == "u" and False:
             infos = calc_metrics(main_df)
             subwin(infos)
-        elif char == "U" and prev_char == "x": 
+        elif char == "U" and prev_char == "z": 
             if sel_col:
                 df = df[sel_col].value_counts(ascending=False).reset_index()
                 sel_cols = list(df.columns)
@@ -2635,7 +2657,7 @@ def show_df(df, summary=False):
                 sel_rows.append(sel_row)
             sel_rows = sorted(sel_rows)
             adjust = False
-        elif char == "#" and prev_char == "x": 
+        elif char == "#" and prev_char == "z": 
             if not sel_rows:
                 tinfo=df.iloc[sel_row]["ftag"]
                 infos = tinfo.split(",")
@@ -3167,14 +3189,14 @@ def show_df(df, summary=False):
                 filter_df = main_df
                 sel_rows = []
                 hotkey = hk
-        elif char == "D" and prev_char == "x":
+        elif char == "D" and prev_char == "z":
             canceled, col,val = list_df_values(main_df, get_val=False)
             if not canceled:
                 del main_df[col]
                 char = "SS"
                 if col in df:
                     del df[col]
-        elif char == "o" and prev_char == "x":
+        elif char == "o" and prev_char == "z":
             if "pname" in df:
                 pname = df.iloc[sel_row]["pname"]
             elif "l1_encoder" in df:
@@ -3245,7 +3267,7 @@ def show_df(df, summary=False):
                         with open(tname, "w") as f:
                             f.write(latex)
 
-        elif char == "P":
+        elif char == "P" and False:
             fig, ax = plt.subplots()
             #cols = selected_cols 
             #if cols:
@@ -3303,6 +3325,8 @@ def show_df(df, summary=False):
                sel_row = 0
             group_col = ""
             keep_uniques = False
+        elif is_enter(ch) and prev_char == "P": 
+            hotkey="br"
         elif is_enter(ch) or char in ["f", "F"]:
             if (is_enter(ch) or char == "f"): # and is_filtered:
                df = pdf # back_df
@@ -3356,7 +3380,7 @@ def show_df(df, summary=False):
             filter_df = main_df
             df = main_df[cond]
             hotkey = hk
-        elif char == "r" and prev_char == "x":
+        elif char == "r" and prev_char == "z":
             canceled, col,val = list_df_values(main_df, get_val=False)
             if not canceled:
                 new_name = rowinput(f"Rename {col}:")
@@ -3367,7 +3391,7 @@ def show_df(df, summary=False):
 
 
 
-        elif char in ["d"] and prev_char == "x":
+        elif char in ["d"] and prev_char == "z":
             canceled, col, val = list_df_values(main_df)
             if not canceled:
                 main_df = main_df.drop(main_df[main_df[col] == val].index)
@@ -3415,7 +3439,7 @@ def show_df(df, summary=False):
             measure_cols = []
             cat_cols = []
             dim_cols = []
-            if prev_char == "x":
+            if prev_char == "z":
                 dim_cols = all_cols['dim_cols'] if "dim_cols" in all_cols else []
                 measure_cols = all_cols['measure_cols'] if "measure_cols" in all_cols else []
                 cat_cols = all_cols['cat_cols'] if "cat_cols" in all_cols else []
@@ -3428,12 +3452,12 @@ def show_df(df, summary=False):
                 visual_mode = True
             else:
                 visual_mode = False
-            if prev_char == "x":
+            if prev_char == "z":
                 info_cols = ["bert_score", "num_preds"]
-            if prev_char == "x": 
+            if prev_char == "z": 
                 sel_cols = ["eid", "rouge_score"] + tag_cols + ["method", "trial", "prefix","num_preds", "bert_score", "pred_max_num","pred_max", "steps","max_acc","best_step", "st_score", "learning_rate",  "num_targets", "num_inps", "train_records", "train_records_nunique", "group_records", "wrap", "frozen", "prefixed"] 
                 save_obj(sel_cols, "sel_cols", context)
-        elif char == "M" and prev_char == "x":
+        elif char == "M" and prev_char == "z":
             info_cols = []
             for col in df.columns:
                 info_cols.append(col)
@@ -3452,7 +3476,7 @@ def show_df(df, summary=False):
                 files.append(js)
             files.insert(0, "meld")
             subprocess.Popen(files)
-        elif char == "m" and prev_char == "x":
+        elif char == "m" and prev_char == "z":
             info_cols = []
             sel_cols = []
             cond = get_cond(df, "model", 2)
@@ -3463,7 +3487,7 @@ def show_df(df, summary=False):
             else:
                 df = df.set_index(['qid','model'])[['pred_text1', 'input_text','prefix']].unstack()
                 df.columns = list(map("_".join, df.columns))
-        elif is_enter(ch) and prev_char == "x":
+        elif is_enter(ch) and prev_char == "z":
             col = sel_cols[0]
             val = sel_dict[col]
             if not "filter" in extra:
@@ -3958,7 +3982,27 @@ def show_df(df, summary=False):
             plt.tight_layout()
             plt.show()            
 
-
+        if cmd == "refresh":
+            #filter_df = orig_df
+            #df = filter_df
+            #FID = "fid" 
+            reset = True
+            pcols=[]
+            cur_files = list(main_df["path"].unique())
+            new_dfs = get_files(root_path, dfname, dftype, summary=False, limit=-1, 
+                    current_files = cur_files)
+            if new_dfs:
+                new_dfs.append(df)
+                main_df = pd.concat(new_dfs)
+            #sel_cols = group_sel_cols 
+            hotkey = "br" 
+        if cmd == "reset":
+            context = "main"
+            pcols=[]
+            save_obj([], "sel_cols", context)
+            save_obj([], "info_cols", context)
+            save_obj([], "pcols", context)
+            hotkey = "br" 
         if cmd.startswith("2bar"):
             category1_mapping = {
                     "t5-large-sup-free-8000":"t5-large-lm-omcs",
@@ -3990,16 +4034,19 @@ def show_df(df, summary=False):
                     cols.remove(col)
             x_label = cols[0]
             y_label = measure_cols[0]
-            if 'input' in cmd:
+            get_input = 'input' in cmd
+            if get_input:
                 x_label = rowinput("X Label:")
-            if 'input' in cmd:
+            if get_input:
                 y_label = rowinput("Y Label:", default= "Mean Accuracy")
+
             if "2" in cmd:
+                cat_col = cat_cols[0]
                 reports.line_2_plot(df[cols], 
                         x_col = dim_cols[0],
                         y_col = measure_cols[0], 
-                        cat_col = cat_cols[0], 
-                        x_label = x_label, y_label = y_label, get_input= "input" in cmd)
+                        cat_col = cat_col,
+                        x_label = x_label, y_label = y_label)
             else:
                 reports.line_plot(df[cols], cols, measure_cols, x_label, y_label)
         elif cmd.startswith("bar") or cmd.startswith("line"):
@@ -4096,7 +4143,7 @@ def show_df(df, summary=False):
                 if sel_cols[cur_col].endswith("_score"):
                     score_col = sel_cols[cur_col]
                 backit(df, sel_cols)
-                tdf = summarize(df, score_col=score_col)
+                tdf = summarize(df, score_col=score_col, pcols=pcols)
             else:
                 tdf = df.copy()
             #rename_dict = {
@@ -4433,11 +4480,16 @@ def show_df(df, summary=False):
         # rrrrrrrrr
         if cmd.startswith("rep") or char == "Z" or char == "r": 
             score_col = None
-            if sel_cols[cur_col].endswith("_score"):
+            if measure_cols and context == "main":
+                score_col = measure_cols[0]
+            elif sel_cols[cur_col].endswith("_score"):
                 score_col = sel_cols[cur_col]
+            if not score_col in df:
+                score_col = None
             if not global_summary:
                 backit(df, sel_cols)
-                pdf = summarize(df, rep_cols=selected_cols, score_col=score_col)
+                pdf = summarize(df, rep_cols=selected_cols, 
+                        score_col=score_col, pcols=pcols)
             else:
                 pdf = df
             avg_col = "All"
@@ -4566,7 +4618,7 @@ def show_df(df, summary=False):
             for exp in exprs:
                 cond = cond | (group_df["eid"] == exp) 
             bdf = group_df[cond]
-            pdf = summarize(bdf, score_col=score_col, rename=False)
+            pdf = summarize(bdf, score_col=score_col, rename=False, pcols=[])
             pdf.reset_index(drop=True)
             dfs = []
             if not selected_cols:
@@ -4995,22 +5047,13 @@ def show_df(df, summary=False):
                 df.to_csv(save_path, sep="\t", index=False)
 
                 save_obj(dfname, "dfname", dfname)
-        if char == "R" and prev_char != "x":
-            #filter_df = orig_df
-            #df = filter_df
-            #FID = "fid" 
-            reset = True
-            cur_files = list(main_df["path"].unique())
-            new_dfs = get_files(root_path, dfname, dftype, summary=False, limit=-1, 
-                    current_files = cur_files)
-            if new_dfs:
-                new_dfs.append(df)
-                main_df = pd.concat(new_dfs)
-            #sel_cols = group_sel_cols 
-            #save_obj([], "sel_cols", context)
-            #save_obj([], "info_cols", context)
-            hotkey = hk
-        if char == "R" and prev_char == "x":
+        if char == "R":
+            cat_col = sel_cols[cur_col] 
+            get_input = True
+            cats = df[cat_col].unique()
+            mapping = {cat: (rowinput(str(cat) + ":", str(cat)) if get_input else cat) for cat in cats}
+            df[cat_col] = df[cat_col].map(mapping)
+        elif char == "R" and prev_char == "z":
             df = main_df
             sel_cols = list(df.columns)
             save_obj(sel_cols,"sel_cols",dfname)

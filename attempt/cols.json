@@ -25,9 +25,6 @@
   "ex_cols":[
   ],
   "dim_cols":[
-    "num_target_prompts",
-    "prompts_conf",
-    "compose_method"
   ],
   "measure_cols":[
     "All"

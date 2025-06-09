@@ -31,6 +31,7 @@
   "start":"start_row",
   "gmax":"gen_thresh_max",
   "nm":"norm_method",
+  "adjnm":"adjust_norm_method",
   "cls":"is_classifier",
   "gnm":"gen_norm_method",
   "model":"model_name_or_path",

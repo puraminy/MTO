@@ -1610,7 +1610,7 @@ def train(**kwargs):
         for t in data_args.task_name + include_tasks:
             if not t in exclude_tasks and not t in tasks:
                 tasks.append(t)
-                tasks_config_names.append(data_args.dataset_config_name[ii])
+                tasks_config_names.append(data_args.dataset_config_name[-1])
             ii += 1
         data_args.task_name = tasks
         # TODO the corresponding config names must be excluded
@@ -1788,8 +1788,8 @@ def train(**kwargs):
     task_args["num_prompts"] = num_prompts 
     task_args["full_prefix"] = kwargs.get("full_prefix",False) # position of question
     task_prefix = kwargs.setdefault("task_prefix", "task")
-    if not "task_prefix" in main_vars:
-        task_prefix = "letter"
+    #if not "task_prefix" in main_vars:
+    #    task_prefix = "letter"
     task_args["task_prefix"] = task_prefix
     task_args["target_prompt_length"] = target_prompt_length 
     task_args["prompt_length"] = kwargs.setdefault("prompt_length", 
@@ -1818,15 +1818,34 @@ def train(**kwargs):
         num_epochs = training_args.num_train_epochs
         if data_args.max_train_samples <= 20:
             num_epochs += 4
+        if data_args.max_train_samples > 30:
+            num_epochs -= 4
         if data_args.max_train_samples > 100:
             num_epochs -= 6
-        elif data_args.max_train_samples > 50:
-            num_epochs -= 4
         if prompts_conf in ["SLP","SL"]:
             num_epochs += 2
+
+        n = max(1, num_source_prompts) 
+        scale = 1 + math.log10(n)
+        num_epochs *= scale
+        num_epochs = int(num_epochs)
         training_args.num_train_epochs = num_epochs
         kwargs["num_train_epochs"] = num_epochs
-
+        
+    if kwargs.get("adjust_norm_method", True): 
+        norm_method = kwargs.get("norm_method","after_sigmoid")
+        ts = kwargs.get("target_share", None)
+        n = max(1, num_source_prompts) 
+        if n == 1:
+            norm_method = "sigmoid"
+            ts = 1
+        elif n <= len(tasks) // 2:
+            norm_method = "soft"
+        else:
+            norm_method = "sparse"
+        kwargs["norm_method"] = norm_method 
+        kwargs["target_share"] = ts
+        
     #if type(data_args.task_name) == list:
     #    model_args.multi_task = True
 
@@ -1879,7 +1898,7 @@ def train(**kwargs):
     else:
         exp_info["multi_single"] = "single"
 
-    exp_info["num_tasks"] = len(tasks)
+    exp_info["num_tasks"] = num_tasks = len(tasks)
     wandb_dir = kwargs.save_path #op.join("logs", experiment)
     Path(wandb_dir).mkdir(parents=True, exist_ok=True)
     experiment = kwargs.experiment
@@ -2069,9 +2088,9 @@ def train(**kwargs):
     config.private_bias = kwargs.setdefault("private_bias", 0)
     config.add_target = add_target_prompt #my option
     config.random_source = kwargs.setdefault("random_source", 0)
-    config.target_share = model_args.target_share #my option
+    config.target_share = kwargs.get("target_share", None) #my option
     config.sig_coef = model_args.sig_coef #my option
-    norm_method = kwargs.setdefault("norm_method", "after_sigmoid") #my option
+    norm_method = kwargs.setdefault("norm_method", "after_soft") #my option
     if "-" in norm_method:
         norm_method, sel_thresh = norm_method.split("-")
         sel_thresh = float(sel_thresh) if sel_thresh != 'none' else None
@@ -4273,9 +4292,9 @@ def train(**kwargs):
                     #### end of for
                     # eeeeeeeeeeeeeeeeee
                     # Saving dfs:
-                    print("Saving dfs ..................")
                     for task, df in dfs.items():
                         save_path = save_paths[task]
+                        print("Saving dfs ..... in:", save_path)
                         df.to_csv(save_path, sep="\t", index=False)
                     mylogs.bp("effect")
                     spec = str(gen_mask_counter)
