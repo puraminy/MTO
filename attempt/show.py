@@ -51,18 +51,37 @@ import math
 import reports
 
 matplotlib.rcParams.update({
-    'font.size': 12,
-    'figure.dpi': 300,
-    'axes.titlesize': 14,
-    'axes.labelsize': 12,
-    'lines.linewidth': 2,
-    'legend.fontsize': 10,
-    'grid.alpha': 0.4,
+    'font.size': 16,              # Base font size (larger for small figure widths)
+    'figure.dpi': 300,            # High-resolution output
+    'figure.figsize': (6, 4),     # Set figure size in inches (adjust as needed)
+    'axes.titlesize': 18,         # Title font size
+    'axes.labelsize': 16,         # Axis label size
+    'font.weight':'bold',
+    'ytick.labelsize': 14,
+    'legend.fontsize': 16,        # Legend font size
+    'lines.linewidth': 2.5,       # Line width for better visibility
+    'lines.markersize': 6,        # Marker size if using
+    'font.family':'DejaVu Sans',
+    'axes.labelweight': 'bold',        # Bold axis labels
+    'xtick.labelsize': 18,
+    'ytick.labelsize': 18,
+    'xtick.major.width': 1.5,
+    'ytick.major.width': 1.5,
+    'xtick.color': 'black',
+    'ytick.color': 'black',
+    'xtick.direction': 'out',
+    'ytick.direction': 'out',        
+    'grid.alpha': 0.3,            # Slightly reduced grid visibility
+    'axes.grid': True,            # Enable grid
+    'savefig.bbox': 'tight',      # Trim whitespace around saved figures
+    'pdf.fonttype': 42,           # Embed fonts correctly in PDFs
+    'ps.fonttype': 42,
 })
 
-def cross_task(df, fname):
-    task_order = ['cola', 'mnli', 'qqp1', 'qnli', 'rte', 'stsb', 'qqp', 'mrpc', 'sst2']
-    tasks = [task for task in task_order if task in df.columns]
+from PyPDF2 import PdfMerger
+def cross_task(df, fname, tasks, title=""):
+    #task_order = ['cola', 'mnli', 'qqp1', 'qnli', 'rte', 'stsb', 'qqp', 'mrpc', 'sst2']
+    #tasks = [task for task in task_order if task in df.columns]
     matrix = pd.DataFrame(index=tasks, columns=tasks, dtype=float)
     for row_task in tasks:
         for col_task in tasks:
@@ -75,11 +94,30 @@ def cross_task(df, fname):
 
     # Plot the heatmap
     plt.figure(figsize=(10, 8))
-    sns.heatmap(matrix.loc[tasks, tasks], annot=True, vmax=90, cmap='viridis', fmt='.1f', linewidths=0.5, linecolor='gray')
-    plt.title('Average Task Accuracy Matrix (Grouped by Seed)')
+    sns.heatmap(matrix.loc[tasks, tasks], annot=True, vmin=0, vmax=90, cmap='viridis', fmt='.1f', linewidths=0.5, linecolor='gray')
+    plt.title(title)
     plt.tight_layout()
-    plt.savefig("/home/ahmad/Desktop/CrossPT/cross/" + fname + ".png")
-    plt.show()
+    base_fname = fname + ".pdf"
+    temp_plot = "temp_plot.pdf"
+    final_pdf = base_fname
+
+    if Path(base_fname).is_file():
+        shutil.move(base_fname, base_fname + "." + now + ".bak")
+
+    plt.savefig(temp_plot, bbox_inches='tight')
+    plt.close()
+
+    merger = PdfMerger()
+
+    if Path(base_fname + "." + now + ".bak").is_file():
+        merger.append(base_fname + "." + now + ".bak")
+
+    merger.append(temp_plot)
+    merger.write(final_pdf)
+    merger.close()
+    Path(temp_plot).unlink()
+    reports.open_pdf(final_pdf)
+
 
 def pearson_corrcoef(predictions, targets) -> dict:
     """Computes Pearson correlation coefficient."""
@@ -743,7 +781,6 @@ def add_scores(df):
     #)
     return df
 
-
 def grouping(df, FID='fid'):
     col = [FID, "prefix"]
     _agg = {}
@@ -861,6 +898,10 @@ def add_cols(df):
     model_temps = df["model_temp"].unique()
     if any("sup" in str(x) for x in model_temps):
         df['model_temp'] = df['model_temp'].map(model_temp_mapping)
+
+    overrides = {'SL': 'SL1', 'SLP': 'SLP1'}
+    if False:
+        df['prompts_conf'] = df['prompts_conf'].map(lambda x: overrides.get(x, x))
     if "input_text" in df:
         df['input_text'] = df['input_text'].str.replace('##','')
         df['input_text'] = df['input_text'].str.split('>>').str[0]
@@ -889,16 +930,19 @@ def add_cols(df):
         df["bert_score"] = df["bert_score"]*100 
     if True: #"compose_method" in df:
         df["expid"] = df["exp_name"].str.split("-").str[1]
-        if "num_target_prompts" in df and False:
-           df["num_target_prompts"] = df["num_target_prompts"] - 1 
+        if "prompts_conf" in df:
+            df.loc[df['prompts_conf'] == 'SLP', 'num_target_prompts'] -= 1
         # if not "expid" in df:
         df["expid"] = df["expid"].astype(str).str.replace("_num", "", regex=False)
         df["expname"] = df["exp_name"].str.split("-").str[1]
         df["ftag"] = df["folder"].str.split("/").str[-1]
         df["ftag"] = df["ftag"].str.split("_").str[0]
-        if "sim_pvt" in df:
+        if "sim_src" in df:
             df["sim_pvt"] = round(df["sim_pvt"],2)
             df["sim_src"] = round(df["sim_src"],2)
+        if "wsim_src" in df:
+            df["wsim_src"] = round(df["wsim_src"],2)
+            df["wsim_pvt"] = round(df["wsim_pvt"],2)
 
         #df["model_base"] = df["model_name_or_path"].apply(lambda x: '-'.join(x.split('-')[1:2] + x.split('-')[-2:]))
 
@@ -1371,6 +1415,8 @@ def show_df(df, summary=False):
            for sel_col in _cols: 
                if  sel_col in _sels:
                    continue
+               if  sel_col == group_col:
+                   continue
                if not sel_col in row: 
                    if sel_col in sel_cols:
                        sel_cols.remove(sel_col)
@@ -1687,6 +1733,8 @@ def show_df(df, summary=False):
                 _, col_widths = row_print(df, col_widths={})
             text = "{:<5}".format(sel_row)
             for i, sel_col in enumerate(sel_cols):
+               if sel_col == group_col:
+                   continue
                if not sel_col in df:
                    sel_cols.remove(sel_col)
                    continue
@@ -1892,9 +1940,12 @@ def show_df(df, summary=False):
             name = ""
             if "prompts_conf" in df:
                 name = df.iloc[sel_row]["prompts_conf"].lower()
-            fname =rowinput("file name to save:",name)
+            fname =rowinput("File name:", settings["fname"] if "fname" in settings else "")
+            settings["fname"] = fname
+            title =rowinput("Title:", settings["title"] if "title" in settings else name)
+            settings["title"] = title 
             sdf = df[selected_cols]
-            cross_task(sdf, fname)
+            cross_task(sdf, fname, pcols, title)
         if ch == 25:  # Ctrl+Y is ASCII 25
             ff = "tt-" + mylogs.now # df.iloc[sel_row]["prompts_conf"].lower()
             #ff =rowinput("file name to save:", ff)
@@ -2072,7 +2123,7 @@ def show_df(df, summary=False):
 
             #cols_to_ignore = set(col_to_ignore) | set(float_cols)
             row_values = df.iloc[sel_row]
-            ignore_cols = float_cols + col_to_ignore  + pcols + ["time","sim_pvt","sim_src", "All","exp","expid","eid","trial"]  
+            ignore_cols = float_cols + col_to_ignore  + pcols + ["time","sim_pvt","wsim_src","sim_src", "All","exp","expid","eid","trial"]  
             # Create mask: rows identical in all non-ignored columns
             #check_cols=[col for col in sel_cols if col not in ignore_cols and col in main_vars]
             check_cols = [col for col in sel_cols if col not in ignore_cols]
@@ -2551,13 +2602,10 @@ def show_df(df, summary=False):
             backit(df, sel_cols)
             context = "grouping"
             shortkeys["grouping"] = {"m":"show mean","s":"show std"}
-
             scol = sel_cols[cur_col]
-
             cols = []
             if not selected_cols and not dim_cols:
                 cols = [scol]
-
             cols += selected_cols + dim_cols + cat_cols
             for col in cols:
                 if not col in df:
@@ -2588,6 +2636,8 @@ def show_df(df, summary=False):
             for col in df:
                 if "_mean" in col:
                     measure_cols.append(col)
+
+            df = df.sort_values(measure_cols, ascending = False)
             left = 0
         elif char in ["g"]: #, "u"]:
             context = "group_mode"
@@ -2821,12 +2871,14 @@ def show_df(df, summary=False):
                 t_path = Path(new_path).parent
                 new_folder_name = Path(new_path).stem
                 pfx = new_folder_name.replace(Path(path).stem,"")
+                num_folders = 0
                 if new_path:
                     parent = Path(path).parent
                     new_parent = Path(new_path).parent
                     pname = Path(path).parent.name
                     expid = Path(path).name
-                    folders = glob(os.path.join(str(parent), "Eval-"+ str(expid) + "*"))
+                    folders = glob(os.path.join(str(parent), "*Eval-"+ str(expid) + "*"))
+                    num_folders += len(folders)
                     for folder in folders:
                         new_folder = Path(folder).stem
                         new_folder = new_folder.replace(str(expid),new_folder_name)
@@ -2837,6 +2889,7 @@ def show_df(df, summary=False):
                         copy_tree(path, new_path)
                         # remove_tree(path)
                     mbeep()
+                show_msg(str(num_folders) + " folders were copied")
             sel_rows = []
         elif char == "d" and prev_char != "=":
             s_rows = sel_rows
@@ -3607,10 +3660,10 @@ def show_df(df, summary=False):
            group_col = "prefix"
         if cmd.startswith("cross") or char == "t":
             backit(df, sel_cols)
-            eid = df.iloc[sel_row]['eid'] 
+            sel_eid = df.iloc[sel_row]['eid'] 
             dfs = []
             context = "cross"
-            df = df.sort_values(by="mask_type", ascending=True)
+            # df = df.sort_values(by="mask_type", ascending=True)
             if "prefix" in df and context != "cross":
                 pfx_cols = df["prefix"].unique()
             elif selected_cols:
@@ -3623,7 +3676,7 @@ def show_df(df, summary=False):
                 if "prefix" in df and context != "cross":
                     _, scores = get_sel_rows(df, None, col="rouge_score", from_main=False) 
                     _, prefixes = get_sel_rows(df, None, col="prefix", from_main=False) 
-                    exprs = [eid] * len(prefixes)
+                    exprs = [sel_eid] * len(prefixes)
                     if "mask_type" in df:
                         _, mask_types = get_sel_rows(df, None, col="mask_type", from_main=False) 
                     if "label" in df:
@@ -3632,10 +3685,12 @@ def show_df(df, summary=False):
                         labels = ["x"] * len(exprs)
                 else:
                     # prefix = sel_cols[_cur_col]
-                    exprs, scores = get_sel_rows(df, col=prefix, from_main=False, srow=ii) 
+                    exprs, scores = get_sel_rows(df, row_id="expid", col=prefix, 
+                            from_main=False, srow=ii) 
                     prefixes = [prefix]*len(exprs)
                     if "mask_type" in df:
-                        _, mask_types = get_sel_rows(df, col="mask_type", from_main=False, srow=ii) 
+                        _, mask_types = get_sel_rows(df, col="mask_type", 
+                                from_main=False, srow=ii) 
                     else:
                         mask_types = exprs.copy()
                     if "label" in df:
@@ -3652,7 +3707,7 @@ def show_df(df, summary=False):
 
                 _cols = ["pred_text1", "target_text"]
                 for eid, acc, mt, label, prefix in zip(exprs, scores, mask_types, labels, prefixes):
-                    tdf = main_df.loc[(main_df.eid == eid) & (main_df.prefix == prefix) & (main_df.mask_type == mt), _cols]
+                    tdf = main_df.loc[(main_df.expid == eid) & (main_df.prefix == prefix) & (main_df.mask_type == mt), _cols]
                     canceled, val = False, "pred_text1" # list_values(sel_cols)
                     if not canceled:
                         treatment = 'target_text' #sel_cols[cur_col]
@@ -3687,8 +3742,8 @@ def show_df(df, summary=False):
                     # gdf = gdf.drop(index=0)
                     gdf = gdf[gdf['preds'] != "All"]
 
-                    gdf["label"] = str(prefix) + "  --  " + str(mt) + "    :" + str(label)
-                    gdf["acc"] = acc
+                    gdf["label"] = str(eid) + f" -- ({acc}) -- " + str(prefix) + "  --  " + str(mt) + "    :" + str(label)
+                    # gdf["acc"] = acc
 
                     #precision_recall_df = gdf.apply(calculate_precision_recall, axis=1)
                     #gdf = pd.concat([gdf, precision_recall_df], axis=1)
@@ -4022,33 +4077,51 @@ def show_df(df, summary=False):
 
             plt.tight_layout()
             plt.show()
-        if cmd.startswith("line"):
+
+        if cmd.startswith("line") or cmd.startswith("bar"):
             cur_sel_col = sel_cols[cur_col]
             if not measure_cols:
                 measure_cols = ['All']
             if not dim_cols:
                 dim_cols = [cur_sel_col]
-            cols = dim_cols + measure_cols + cat_cols
-            for col in cols:
+            for col in measure_cols:
                 if not col in df:
-                    cols.remove(col)
+                    measure_cols.remove(col)
+            cols = dim_cols + measure_cols + cat_cols
             x_label = cols[0]
-            y_label = measure_cols[0]
-            get_input = 'input' in cmd
+            y_labels = measure_cols
+            get_input = 'inp' in cmd
             if get_input:
                 x_label = rowinput("X Label:")
             if get_input:
-                y_label = rowinput("Y Label:", default= "Mean Accuracy")
+                y_labels = []
+                for yy in measure_cols:
+                    y_label = rowinput(f"Y Label for {yy}:", default= yy)
+                    y_labels.append(y_label)
 
-            if "2" in cmd:
-                cat_col = cat_cols[0]
-                reports.line_2_plot(df[cols], 
+            use_std = "std" in cmd
+            new_file = False
+            if "new" in cmd:
+                new_file = cmd.split("new")[-1].strip()
+                if not new_file: new_file = mylogs.now
+
+            if "line" in cmd:
+                reports.line_plot(df[cols], 
                         x_col = dim_cols[0],
-                        y_col = measure_cols[0], 
-                        cat_col = cat_col,
-                        x_label = x_label, y_label = y_label)
+                        y_cols = measure_cols, 
+                        cat_cols = cat_cols,
+                        x_label = x_label, 
+                        y_labels = y_labels, use_std=use_std, 
+                        new_file = new_file, normalize = "norm" in cmd)
             else:
-                reports.line_plot(df[cols], cols, measure_cols, x_label, y_label)
+                reports.bar_plot(df[cols], 
+                        x_col = dim_cols[0],
+                        y_cols = measure_cols, 
+                        cat_cols = cat_cols,
+                        x_label = x_label, 
+                        y_labels = y_labels, use_std=use_std, 
+                        new_file = new_file, normalize = "norm" in cmd)
+
         elif cmd.startswith("bar") or cmd.startswith("line"):
             show_extra = True
             consts["columns"] = sel_cols 
@@ -4963,6 +5036,15 @@ def show_df(df, summary=False):
                         df = df.replace(d)
                         main_df = main_df.replace(d)
                         char = "SS"
+
+        if cmd == "multiply":
+            col = sel_cols[cur_col]
+            val = rowinput("Multiply  " + col + " to:")
+            df[col] = df[col] * float(val)
+        if cmd == "fillna":
+            col = sel_cols[cur_col]
+            val = rowinput("Set " + col + " nas to:")
+            df[col] = df[col].replace({None: int(val)})
         if cmd in ["set", "set@", "add", "add@", "setcond"]:
             if "add" in cmd:
                 col = rowinput("New col name:")

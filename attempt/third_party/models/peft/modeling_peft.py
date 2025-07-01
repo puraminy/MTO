@@ -1,4 +1,3 @@
-import torch
 import math, random
 import torch.nn.functional as F
 from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
@@ -371,6 +370,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.anneal_type = config.anneal_type
         self.temperature = config.temperature
         self.alpha_raw = nn.Parameter(torch.tensor(0.0))    
+        self.pass_task_ids = config.pass_task_ids
 
         self.lambda_entropy = config.lambda_entropy
         self.entropy_loss = 0
@@ -567,6 +567,7 @@ class AttentivePromptEncoder(torch.nn.Module):
         self.common_prompt_ids = torch.tensor(common_prompt_ids, device=device)
         self.task_prompt_ids = torch.tensor(task_prompt_ids, device=device)
         intrinsic_dim = 200
+
         if self.target_share is not None:
             #self.target_router = nn.Linear(..., bias=True)
             #self.target_router.bias.data.fill_(-2.0)
@@ -637,11 +638,18 @@ class AttentivePromptEncoder(torch.nn.Module):
     def store_encoders(self, output_dir = None, 
             prompts_only=False, 
             prompts_and_router_only=False,
-            save_source_prompts = False, prompts_to_save=None, prefix="", 
+            save_source_prompts = False, 
+            save_private_prompts = False, 
+            save_target_prompts = False, 
+            prompts_to_save=None, prefix="", 
             router_prefix="", save_router=False):
         prefix = prefix.strip("_")
         if prompts_to_save:
             for encoder in self.prompt_encoders:
+                if not save_target_prompts and encoder.is_target:
+                    continue
+                if not save_private_prompts and encoder.is_private:
+                    continue
                 if not save_source_prompts and encoder.is_source:
                     continue
                 if (prompts_to_save != "all" 
@@ -1476,6 +1484,13 @@ class AttentivePromptEncoder(torch.nn.Module):
                                           device=device) 
             task_prompts = torch.zeros((*sp_prompt_ids.size(), self.model_dim), 
                                           device=device) 
+            src_prompts = torch.zeros(
+                (num_prompt_encoders,
+                 self.src_prompt_dim, self.out_dim), device=device)
+            batched_src_prompts = torch.zeros((batch_size,
+                 num_prompt_encoders,
+                 self.src_prompt_dim, self.out_dim), device=device)
+
             # a list of indexes to target encoders (one encoder per task)
             target_idx = torch.zeros_like(target_prompt_ids, device=device).long() 
             source_idx_list = [0] # 0 is for input 
@@ -1483,19 +1498,20 @@ class AttentivePromptEncoder(torch.nn.Module):
             target_prompts_list = []
             task_prompts_list = []
             common_prompts_list = []
-            src_prompts = torch.zeros(
-                (num_prompt_encoders, 
-                 self.src_prompt_dim, self.out_dim), device=device) 
             pvt_prompts = {}  # Dictionary keyed by encoder.src_idx
             src_prompts_dict = {}
             ii = 1
             for encoder in self.prompt_encoders:
                 if encoder.is_source: # and self.use_source_prompts:
                     source_idx_list.append(ii)
-                    emb = encoder(encoder.net_inps)
-                    src_prompts_dict[encoder.src_idx] = emb
-                    if self.pvt_prompt_dim == self.src_prompt_dim:
-                        src_prompts[encoder.src_idx, :] = emb
+                    if self.pass_task_ids is True:
+                        emb = encoder(encoder.net_inps, tids=tids)
+                    else:
+                        emb = encoder(encoder.net_inps, tids=None)
+                    #src_prompts_dict[encoder.src_idx] = emb
+                    #if self.pvt_prompt_dim == self.src_prompt_dim:
+                    #    src_prompts[encoder.src_idx, :] = emb
+                    batched_src_prompts[:, encoder.src_idx, :] = emb
                     if encoder.is_private:
                         pvt_prompts[encoder.src_idx] = emb
                     ii += 1
@@ -1521,7 +1537,7 @@ class AttentivePromptEncoder(torch.nn.Module):
                         #find input ids for prompt tokens
                         prompt_input_ids = sp_prompt_ids[task_masks]
                         #call forwards on prompt encoder whose outputs are prompt embeddings
-                        out = encoder(prompt_input_ids, tids)
+                        out = encoder(prompt_input_ids, tids = None)
                         prompt_embeds = out.to(device)
                         task_prompts_clone = task_prompts.clone()
                         task_prompts_clone[task_masks] = prompt_embeds
@@ -1533,14 +1549,24 @@ class AttentivePromptEncoder(torch.nn.Module):
                     prompt_input_ids = target_prompt_ids[target_masks]
                     #call forwards on prompt encoder whose outputs are prompt embeddings
                     mylogs.bp("fwdtarget")
-                    out = encoder(prompt_input_ids, tids)
+                    if self.pass_task_ids is True:
+                        out = encoder(prompt_input_ids, tids)
+                    else:
+                        out = encoder(prompt_input_ids, tids = None)
                     prompt_embeds = out.to(device)
-                    target_prompts_clone = target_prompts.clone()
-                    target_prompts_clone[target_masks] = prompt_embeds
-                    target_prompts_list.append(target_prompts_clone)
+                    #target_prompts_clone = target_prompts.clone()
+                    #target_prompts_clone[target_masks] = prompt_embeds
+                    #target_prompts_list.append(target_prompts_clone)
+                    target_prompts_list.append(prompt_embeds)
                     target_idx_list.append(ii)
                     target_idx[target_masks] = ii
                     ii += 1
+            #sorted_src_idxs = sorted(src_prompts_dict.keys())        # e.g. [1,2,3,…]
+            #all_src_prompts = torch.stack(
+            #    [ src_prompts_dict[idx] for idx in sorted_src_idxs ],
+            #    dim=1                                                 # new “encoder” dim
+            #)  # shape [B, N_src, L_src, D]
+            #source_idx_tensor = torch.tensor([0] + sorted_src_idxs, device=device).long()
             if common_prompts_list:
                 common_prompts = torch.stack(common_prompts_list) 
                 # averaging task prompts in the case that there are shared prompts
@@ -1554,10 +1580,10 @@ class AttentivePromptEncoder(torch.nn.Module):
                 task_prompts = (task_prompts*mask).sum(dim=0)/mask.sum(dim=0)
                 inputs_embeds[task_prompt_masks]=task_prompts.view(-1, self.model_dim)
             if target_idx_list:
-                target_prompts = torch.stack(target_prompts_list) 
-                mask = target_prompts != 0
+                #target_prompts = torch.stack(target_prompts_list) 
+                #mask = target_prompts != 0
                 # averaging target prompts in the case that there are shared prompt tokens
-                target_prompts = (target_prompts*mask).sum(dim=0)/mask.sum(dim=0)
+                #target_prompts = (target_prompts*mask).sum(dim=0)/mask.sum(dim=0)
                 if self.attn_prompt_tuning: #TODO and not self.target_share == 1:
                     attn_mask = self.attn_mask
                     mylogs.bp("ccc")
@@ -1594,9 +1620,11 @@ class AttentivePromptEncoder(torch.nn.Module):
                                 target_idx.unsqueeze(1))
                         s_mask = sel_attn_mask.bool().squeeze(1)
                         source_idx = source_idx[s_mask].view(batch_size, -1)
-                        src_prompts = src_prompts.repeat(batch_size, 1, 1, 1) 
-                        sel_prompts = batched_index_select(src_prompts, 1, 
-                            source_idx.unsqueeze(1))
+                        #batched_src_prompts = src_prompts.repeat(batch_size, 1, 1, 1) 
+                        sel_prompts = batched_index_select(batched_src_prompts, 1, 
+                                source_idx.unsqueeze(1))
+                        #sel_prompts = batched_index_select(src_prompts, 1, 
+                        #    source_idx.unsqueeze(1))
                         mylogs.bp("fwdatt")
                         #if (self.attend_target 
                         #    or self.add_target and self.compose_method in ["cat"]):
@@ -1816,6 +1844,7 @@ class CustomTrainer(Trainer):
         self.beta = beta    # Weight for router loss
         self.temperature = temperature  # Scaling factor for contrastive loss
         self.task_labels = []
+        self.task_id = None
         self.is_classifier = cls
         self.max_new_tokens = 10
     
@@ -1833,6 +1862,7 @@ class CustomTrainer(Trainer):
         test_dataset,
         task_names: Optional[List[str]] = None,
         task_labels: Optional[List[Union[int, float]]] = None,
+        task_id = None,
         **kwargs
     ):
         """Override predict() to accept task information while maintaining original behavior"""
@@ -1843,6 +1873,7 @@ class CustomTrainer(Trainer):
         if task_labels is not None:
             test_dataset.task_labels = task_labels
         self.task_labels = test_dataset[0]["extra_fields"]["labels_list"]
+        self.task_id = task_id
 
         # Call original predict() with all its normal functionality
         return super().predict(test_dataset, **kwargs)
@@ -1980,6 +2011,7 @@ class CustomTrainer(Trainer):
         input_ids = inputs.get("input_ids")
         attention_mask = inputs.get("attention_mask")
         labels = inputs.get("labels", None)
+        task_ids = inputs.get("task_id", None)
 
         # Determine model type
         is_encoder_decoder = (hasattr(model.config, "is_encoder_decoder") 
@@ -1998,6 +2030,7 @@ class CustomTrainer(Trainer):
                     num_beams=1,
                     max_new_tokens=self.max_new_tokens,
                     repetition_penalty=2.0,
+                    task_ids=task_ids,
                     # logits_processor=logits_processor
                 )
                 outputs = generated_tokens
@@ -2111,6 +2144,7 @@ class CustomModelWrapper(PreTrainedModel):
                 inputs_embeds: Optional[torch.Tensor] = None,
                 attention_mask: Optional[torch.Tensor] = None,
                 labels: Optional[torch.Tensor] = None,
+                task_id = None,
                 **kwargs) -> Dict[str, Any]:
 
         # Get the embedding layer from the base model
@@ -2124,7 +2158,8 @@ class CustomModelWrapper(PreTrainedModel):
         if self.encoder is not None and self.training:
             input_ids, attention_mask, inputs_embeds = \
                 self.encoder.prompt_encoders_forward(
-                    input_ids, inputs_embeds, att_mask=attention_mask
+                    input_ids, inputs_embeds, att_mask=attention_mask, 
+                    task_ids = task_id
                 )
 
         # Pass the inputs through the T5 encoder
@@ -2177,9 +2212,11 @@ class CustomModelWrapper(PreTrainedModel):
                 inputs_embeds = None
 
             # Apply prompt tuning
+            task_ids = kwargs.pop("task_ids", None)
             input_ids, attention_mask, inputs_embeds = \
                 self.encoder.prompt_encoders_forward(
-                    input_ids, inputs_embeds, att_mask=attention_mask
+                    input_ids, inputs_embeds, att_mask=attention_mask, 
+                    task_ids=task_ids
                 )
 
             # Pass inputs_embeds to generate

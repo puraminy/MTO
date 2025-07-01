@@ -26,17 +26,26 @@ def _isin(tensor:torch.Tensor,values:torch.Tensor):
 class PromptEncoder(torch.nn.Module):
     enc_type = "encoder"
     def __init__(self, name, prompt_tokens, length=None, model=None, 
-            tokenizer=None, is_source =False, enc_type="encoder"): 
+            tokenizer=None, 
+            is_source =False, enc_type="encoder", 
+            num_tasks = None, task_emb_dim=50, 
+            task_compose_method='concat'): 
         super().__init__()
         self.name = name
         self.load_name = name
         self.enc_type = enc_type
         self.prompt_tokens = prompt_tokens
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.length = len(prompt_tokens) if prompt_tokens else length
         self.embedding_dim = model.config.hidden_size
         self.embedding = torch.nn.Embedding(self.length, self.embedding_dim)
-
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.num_tasks = num_tasks
+        self.task_emb_dim = task_emb_dim
+        self.task_compose_method = task_compose_method
+        #self.task_embedding = nn.Embedding(num_tasks, self.task_emb_dim)
+        #self.task_cat_proj = nn.Linear(self.embedding_dim + self.task_emb_dim, 
+        #        self.embedding_dim).to(self.device)
+        #self.task_proj = nn.Linear(self.task_emb_dim, self.embedding_dim).to(self.device)
         self.net_inps = torch.arange(self.length, device=self.device)
 
         self.prompt_ids = self.get_prompt_ids(prompt_tokens, model, tokenizer)
@@ -96,6 +105,8 @@ class PromptEncoder(torch.nn.Module):
                     # name + "_" + str(length) + ".pt"
         if self.is_source:
             fname = fname.replace("source_","") 
+        if self.is_target:
+            fname = fname.replace("tar-","") 
         return fname
 
     def save(self, save_dir, prefix="pt"):
@@ -198,11 +209,37 @@ class PromptEncoder(torch.nn.Module):
 
 class EmbeddingPromptEncoder(PromptEncoder):
     enc_type = "emb"
-    def forward_step(self, index_list, tids=None, training=True):
-        mylogs.bp("emb")
-        ret_embeds = self.embedding(index_list)
-        return ret_embeds 
+    def forward_step(self, index_list=None, tids=None, training=True):
+        """
+        Args:
+            index_list: Optional tensor of indices to override default input (e.g., for shuffling)
+            tids: task ids (shape: [B] or scalar). Required for task conditioning.
+        Returns:
+            Tensor of shape [B, length, embedding_dim]
+        """
+        B = tids.size(0) if tids is not None else 1  # batch size
+        input_ids = self.net_inps if index_list is None else index_list
+        token_embs = self.embedding(input_ids)  # [length, D]
+        if tids is not None:
+            token_embs = token_embs.unsqueeze(0).expand(B, -1, -1)
+            task_embs = self.task_embedding(tids)  # [B, task_emb_dim]
+            task_embs = task_embs.unsqueeze(1).expand(-1, self.length, -1) 
+            if self.task_compose_method == "concat":
+                # Concatenate and apply projection
+                merged = torch.cat([token_embs, task_embs], dim=-1)
+                ret_embeds = self.task_cat_proj(merged)  # [B, length, embedding_dim]
+            elif self.task_compose_method == "add":
+                # Add task vector (after projection if dims don't match)
+                if task_embs.size(-1) != self.embedding_dim:
+                    task_embs = self.task_proj(task_embs)
+                ret_embeds = token_embs + task_embs  # [B, length, embedding_dim]
+            else:
+                raise ValueError(f"Unknown task_compose_method: {task_compose_method}")
+        else:
+            ret_embeds = token_embs  # no task awareness
 
+        return ret_embeds
+        
 class MatPromptEncoder(PromptEncoder):
     enc_type = "mat"
     def __init__(self, shared_mat, n_prompts, 
@@ -368,39 +405,150 @@ class ResMLP(PromptEncoder):
         ret_embeds = F.embedding(index_list, running_weight)
         return ret_embeds
 
-class MLPPromptEncoder22(PromptEncoder):
-    enc_type = "mlp"
+import torch
+import torch.nn.functional as F
 
+class MLPPromptEncoderFiLM(PromptEncoder):
+    enc_type = "mlp_film"
+    def __init__(
+        self,
+        num_layers=1,
+        hidden_size=-1,
+        nl="gelu",
+        out_dim=-1,
+        in_dim=-1,
+        task_emb_dim=128,
+        film_hidden=64,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        embedding_dim = self.embedding_dim
+
+        # dims
+        if out_dim == -1:
+            out_dim = embedding_dim
+        if in_dim == -1:
+            in_dim = embedding_dim
+        self.hidden_size = hidden_size
+        self.task_emb_dim = task_emb_dim
+
+        # nonlinearity lookup
+        self.nlf = {
+            'gelu': torch.nn.GELU(),
+            'relu': torch.nn.ReLU(),
+            'silu': torch.nn.SiLU(),
+            'elu': torch.nn.ELU(),
+            'id': torch.nn.Identity(),
+        }.get(nl.lower(), None)
+
+        # base MLP layers (ModuleList for layer alignment)
+        self.mlp = torch.nn.ModuleList()
+        if hidden_size <= 0:
+            self.mlp.append(torch.nn.Linear(in_dim, out_dim))
+        else:
+            hsize = hidden_size if hidden_size > 1 else embedding_dim
+            self.mlp.append(torch.nn.Linear(in_dim, hsize))
+            if self.nlf: self.mlp.append(self.nlf)
+            if num_layers == 2:
+                self.mlp.append(torch.nn.Linear(hsize, hsize))
+                if self.nlf: self.mlp.append(self.nlf)
+            self.mlp.append(torch.nn.Linear(hsize, out_dim))
+
+        # FiLM projection heads aligned with mlp layers
+        self.film_projs = torch.nn.ModuleList([
+            (torch.nn.Sequential(
+                torch.nn.Linear(self.task_emb_dim, film_hidden),
+                torch.nn.ReLU(),
+                torch.nn.Linear(film_hidden, layer.out_features * 2)
+            ) if isinstance(layer, torch.nn.Linear) else None)
+            for layer in self.mlp
+        ])
+
+        # task embedding
+        self.task_embedding = torch.nn.Embedding(self.num_tasks, task_emb_dim)
+
+    def forward_step(self, index_list, tids=None, training=True):
+        B = tids.size(0) if tids is not None else 1
+        # prepare token embeddings [B, L, in_dim]
+        input_ids = self.net_inps if index_list is None else index_list
+        token_embs = self.embedding(input_ids)
+        if tids is not None:
+            token_embs = token_embs.unsqueeze(0).expand(B, -1, -1)
+            task_embs = self.task_embedding(tids)
+            task_embs = task_embs.unsqueeze(1).expand(-1, token_embs.size(1), -1)
+
+            h = token_embs
+            h_in = h
+            # apply MLP with FiLM at each linear
+            for layer, proj in zip(self.mlp, self.film_projs):
+                if isinstance(layer, torch.nn.Linear):
+                    h = layer(h)
+                    # FiLM: proj is not None
+                    gamma_beta = proj(task_embs)
+                    gamma, beta = gamma_beta.chunk(2, dim=-1)
+                    h = gamma * h + beta
+                else:
+                    h = layer(h)
+            running_weight = h + h_in
+        else:
+            # no task conditioning: plain MLP
+            h = token_embs
+            h_in = h
+            for layer in self.mlp:
+                h = layer(h)
+            running_weight = h # h.unsqueeze(0) # + h_in.unsqueeze(0)
+
+        # index and return prompt tokens
+        if index_list is None:
+            index_list = torch.arange(self.length, device=self.device)
+        if running_weight.dim() == 3:
+            idx = index_list.unsqueeze(0).expand(running_weight.size(0), -1)
+            ret_embeds = torch.gather(
+                running_weight,
+                dim=1,
+                index=idx.unsqueeze(-1).expand(-1, -1, running_weight.size(-1))
+            )
+        else:
+            ret_embeds = F.embedding(index_list, running_weight)
+        return ret_embeds
+
+class MLPPromptEncoder(PromptEncoder):
+    enc_type = "mlp"
     def __init__(self, num_layers=1, hidden_size=-1, 
                  nl="gelu", out_dim=-1, in_dim=-1, **kwargs):
         super().__init__(**kwargs)
-
         embedding_dim = self.embedding_dim
+
         if out_dim == -1:
             out_dim = embedding_dim
         if in_dim == -1:
             in_dim = embedding_dim
 
-        # Activation function
-        nlf = None
+        self.hidden_size = hidden_size
+
+        # Nonlinearity selection
         if nl is not None:
             nl = nl.lower()
             if nl == "gelu":
                 nlf = torch.nn.GELU()
+            elif nl == "id":
+                nlf = torch.nn.Identity()
             elif nl == "relu":
                 nlf = torch.nn.ReLU()
             elif nl == "silu":
                 nlf = torch.nn.SiLU()
             elif nl == "elu":
                 nlf = torch.nn.ELU()
+            else:
+                nlf = None
+        else:
+            nlf = None
 
         layers = []
 
-        # Case 1: Single-layer linear encoder
-        if num_layers == 1 and hidden_size <= 1:
+        # If hidden_size <= 0, use a single linear layer: in_dim -> out_dim
+        if hidden_size == 0:
             layers.append(torch.nn.Linear(in_dim, out_dim))
-
-        # Case 2: MLP with hidden layer(s)
         else:
             hsize = hidden_size if hidden_size > 1 else embedding_dim
             layers.append(torch.nn.Linear(in_dim, hsize))
@@ -411,59 +559,61 @@ class MLPPromptEncoder22(PromptEncoder):
                 layers.append(torch.nn.Linear(hsize, hsize))
                 if nlf is not None:
                     layers.append(nlf)
-
             layers.append(torch.nn.Linear(hsize, out_dim))
-
         self.mlp = torch.nn.Sequential(*layers)
 
     def forward_step(self, index_list, tids=None, training=True):
-        embs = self.embedding(self.net_inps)
-        running_weight = self.mlp(embs)
-        ret_embeds = F.embedding(index_list, running_weight)
+        """
+        Args:
+            index_list: indices into the prompt (e.g., [0, 1, 2, ...])
+            tids: [B] tensor of task ids
+        Returns:
+            Tensor [B, len(index_list), embedding_dim]
+        """
+        B = tids.size(0) if tids is not None else 1
+        input_ids = self.net_inps if index_list is None else index_list  # [L]
+        token_embs = self.embedding(input_ids)  # [L, input_dim]
+        if tids is not None:
+            # Expand for batch: [B, L, input_dim]
+            token_embs = token_embs.unsqueeze(0).expand(B, -1, -1)
+            task_embs = self.task_embedding(tids)  # [B, task_emb_dim]
+            task_embs = task_embs.unsqueeze(1).expand(-1, token_embs.size(1), -1)  
+            # [B, L, task_emb_dim]
+
+            if self.task_compose_method == "concat":
+                merged = torch.cat([token_embs, task_embs], dim=-1)  
+                # [B, L, input_dim + task_emb_dim]
+                token_embs = self.task_cat_proj(merged)  # [B, L, embedding_dim]
+            elif self.task_compose_method == "add":
+                task_proj = self.task_proj(task_embs) if self.task_emb_dim != self.embedding_dim else task_embs
+                token_embs = token_embs + task_proj  # [B, L, embedding_dim]
+            else:
+                raise ValueError(f"Unknown task_compose_method: {task_compose_method}")
+
+        # Apply MLP: [B, L, embedding_dim]
+        # running_weight = self.mlp(token_embs)  # [B, L, D]
+        h = token_embs
+        h_in = h
+        for layer in self.mlp:
+            h = layer(h)
+        running_weight = h + h_in
+        if index_list is None:
+            index_list = torch.arange(self.length, device=self.device)
+
+        if running_weight.dim() == 3:
+            # Case where running_weight is [B, L, D] and you want per-sample indexing
+            index_list = index_list.unsqueeze(0).expand(B, -1)  # [B, L_idx]
+            ret_embeds = torch.gather(
+                running_weight,
+                dim=1,
+                index=index_list.unsqueeze(-1).expand(-1, -1, running_weight.size(-1))
+            )
+        else:
+            ret_embeds = F.embedding(index_list, running_weight)
+
         return ret_embeds
 
 
-class MLPPromptEncoder(PromptEncoder):
-    enc_type = "mlp"
-    def __init__(self, num_layers=1, hidden_size=-1, 
-            nl = "gelu", out_dim= -1, in_dim=-1, **kwargs):
-        super().__init__(**kwargs)
-        embedding_dim = self.embedding_dim
-        if out_dim == -1:
-            out_dim = embedding_dim
-        if in_dim == -1:
-            in_dim = embedding_dim
-        if nl is not None:
-            if nl.lower() == "gelu":
-                nlf = torch.nn.GELU()
-            elif nl.lower() == "id":
-                nlf = torch.nn.Identity()
-            elif nl.lower() == "relu":
-                nlf = torch.nn.ReLU()
-            elif nl.lower() == "silu":
-                nlf = torch.nn.SiLU()
-            elif nl.lower() == "elu":
-                nlf = torch.nn.ELU()
-            else:
-                nlf = None 
-        else:
-            nlf = None 
-        hsize = hidden_size if hidden_size > 1 else embedding_dim # // 2
-        layers = [torch.nn.Linear(in_dim, hsize)]
-        if nlf is not None:
-            layers.append(nlf)
-        if num_layers == 2:
-            layers.append(torch.nn.Linear(hsize, hsize))
-            if nlf is not None:
-                layers.append(nlf)
-        layers.append(torch.nn.Linear(hsize, out_dim))
-        self.mlp = torch.nn.Sequential(*layers)
-
-    def forward_step(self, index_list, tids=None, training=True):
-        embs = self.embedding(self.net_inps)
-        running_weight = self.mlp(embs)
-        ret_embeds = F.embedding(index_list, running_weight)
-        return ret_embeds 
 
 class LSTMEmbeddingPromptEncoder(PromptEncoder):
     enc_type = "lstm"
@@ -554,7 +704,8 @@ def extend_tokenizer(tokenizer, model, tokens = []):
 def create_encoder(name, model, tokenizer, prompt_tokens, 
         length=None, encoder_type="lstm", non_linear="relu",
         hidden_size=-1, num_layers=1, out_dim=-1, in_dim=-1,
-        is_source = False, shared_mat=None):
+        is_source = False, shared_mat=None, 
+        num_tasks =None, task_emb_dim=50, task_compose_method='concat'):
     embedding_dim = model.config.hidden_size
     cur_list = tokenizer.additional_special_tokens
     my_specials = [x for x in cur_list if not "<extra_id"  in x]
@@ -584,8 +735,13 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 in_dim = in_dim,
                 out_dim = out_dim,
                 is_source = is_source,
+                num_tasks = num_tasks,
                 num_layers=num_layers, 
-                hidden_size=hidden_size, enc_type=encoder_type)
+                hidden_size=hidden_size, 
+                enc_type=encoder_type,
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
+                )
         elif encoder_type.startswith("mlpres"):
             res_type = "MLP1"
             if len(encoder_type.split("@")) > 0:
@@ -598,8 +754,28 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 in_dim = in_dim,
                 out_dim = out_dim,
                 is_source = is_source,
+                num_tasks = num_tasks,
                 enc_type=res_type, 
-                hidden_size=hidden_size)
+                hidden_size=hidden_size,
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
+                )
+        elif "film" in encoder_type:
+            prompt_encoder = MLPPromptEncoderFiLM(name = name,
+                model=model, tokenizer=tokenizer,
+                prompt_tokens=prompt_tokens, 
+                length = length,
+                nl = non_linear,
+                in_dim = in_dim,
+                out_dim = out_dim,
+                is_source = is_source,
+                num_tasks = num_tasks,
+                num_layers=num_layers, 
+                enc_type=encoder_type,
+                hidden_size=hidden_size,
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
+                )
         else:
             prompt_encoder = MLPPromptEncoder(name = name,
                 model=model, tokenizer=tokenizer,
@@ -609,16 +785,24 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 in_dim = in_dim,
                 out_dim = out_dim,
                 is_source = is_source,
+                num_tasks = num_tasks,
                 num_layers=num_layers, 
                 enc_type=encoder_type,
-                hidden_size=hidden_size)
+                hidden_size=hidden_size,
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
+                )
     elif encoder_type.startswith("emb"):
         prompt_encoder = EmbeddingPromptEncoder(name = name,
                 model=model, tokenizer=tokenizer,
                 length = length,
                 is_source = is_source,
+                num_tasks = num_tasks,
                 enc_type=encoder_type,
-                prompt_tokens=prompt_tokens) 
+                prompt_tokens=prompt_tokens, 
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
+                )
 
     elif encoder_type.startswith("mat"):
         prompt_encoder = MatPromptEncoder(
@@ -628,8 +812,11 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 name = name, 
                 length = length,
                 is_source = is_source,
+                num_tasks = num_tasks,
                 model=model, tokenizer=tokenizer,
                 prompt_tokens=prompt_tokens, 
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
                 shared_mat=shared_mat) 
     else:
         _enc_type = encoder_type.split("@")
@@ -645,7 +832,10 @@ def create_encoder(name, model, tokenizer, prompt_tokens,
                 prompt_tokens=prompt_tokens, 
                 length = length,
                 is_source = is_source,
+                num_tasks = num_tasks,
                 num_layers=num_layers, 
+                task_emb_dim=task_emb_dim,
+                task_compose_method=task_compose_method,
                 hidden_size=hidden_size)
     # prompt_encoder.enc_type = encoder_type
     return prompt_encoder, encoder_type

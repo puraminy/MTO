@@ -8,6 +8,28 @@ from pytz import timezone
 import os
 import platform
 import subprocess
+from PyPDF2 import PdfMerger
+
+def add_open_pdf(fname):
+    base_fname = os.path.join("/home","ahmad", "pics", fname + ".pdf")
+    temp_plot = "temp_plot.pdf"
+    final_pdf = base_fname
+    now = "now"
+    if Path(base_fname).is_file():
+        shutil.move(base_fname, base_fname + "." + now + ".bak")
+
+    plt.savefig(temp_plot, bbox_inches='tight')
+    plt.close()
+
+    merger = PdfMerger()
+    if Path(base_fname + "." + now + ".bak").is_file():
+        merger.append(base_fname + "." + now + ".bak")
+
+    merger.append(temp_plot)
+    merger.write(final_pdf)
+    merger.close()
+    Path(temp_plot).unlink()
+    open_pdf(final_pdf)
 
 def open_pdf(path):
     if platform.system() == "Windows":
@@ -17,72 +39,162 @@ def open_pdf(path):
     else:  # Assume Linux or Unix
         subprocess.run(["xdg-open", path])
 
+def line_plot(df, x_col, y_cols, cat_cols, x_label, 
+        y_labels=['Value'], use_std=False, new_file=False, normalize=False):
+    if isinstance(cat_cols, str):
+        cat_cols = [cat_cols]
+    if isinstance(y_cols, str):
+        y_cols = [y_cols]
+    if not cat_cols or cat_cols == [None]:
+        cat_cols = []
 
+    df = df.copy()
 
-def line_2_plot(df, x_col, y_col, cat_col, x_label, y_label='Accuracy'):
+    if cat_cols:
+        df['group'] = df[cat_cols].astype(str).agg('_'.join, axis=1)
+    else:
+        df['group'] = ''  # empty placeholder for group
+
     df = df.sort_values(x_col)
-    markers = ['o', 's']
-    colors = ['orange', 'blue','green', 'brown', 'cyan']
-    cats = df[cat_col].unique()
-    for i, cat in enumerate(cats):
-        filtered_df = df[df[cat_col] == cat]
-        plt.plot(filtered_df[x_col], filtered_df[y_col], marker=markers[i % len(markers)],
-                 label=cat)
 
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
+    if normalize:
+        for y in y_cols:
+            y_min, y_max = df[y].min(), df[y].max()
+            df[f"{y}_norm"] = (df[y] - y_min) / (y_max - y_min + 1e-8)
+
+    markers = ['o', 's', '^', 'D', 'v', 'x']
+    linestyles = ['-', '--', ':', '-.']
+    colors = ['blue', 'green', 'brown', 'black', 'red', 'magenta', 'teal', 'orange']
+
+    plt.figure(figsize=(12, 6))
+
+    for j, y_col in enumerate(y_cols):
+        plot_col = f"{y_col}_norm" if normalize else y_col
+
+        groups = df['group'].unique()
+        for i, group in enumerate(groups):
+            filtered = df[df['group'] == group]
+
+            # Legend label: y_col if no group; otherwise group
+            label = y_labels[j] if not cat_cols else group
+
+            if use_std:
+                summary = filtered.groupby(x_col)[plot_col].agg(['mean', 'std']).reset_index()
+                plt.errorbar(
+                    summary[x_col], summary['mean'], yerr=summary['std'],
+                    fmt=markers[i % len(markers)], capsize=5,
+                    linestyle=linestyles[j % len(linestyles)],
+                    color=colors[(j + i) % len(colors)],
+                    ecolor=colors[(j + i + 3) % len(colors)],
+                    label=label
+                )
+            else:
+                plt.plot(
+                    filtered[x_col], filtered[plot_col],
+                    marker=markers[i % len(markers)],
+                    linestyle=linestyles[j % len(linestyles)],
+                    color=colors[(j + i) % len(colors)],
+                    label=label
+                )
+
+    plt.xlabel(x_label, fontweight='bold')
+    y_label = y_labels[0] if len(y_labels) == 1 else ""
+    plt.ylabel(y_label, fontweight='bold')
+    
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    tehran = timezone('Asia/Tehran')
-    now = datetime.now(tehran)
-    now = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
-    fname = x_col + "-" + y_col + ".pdf"
+
+    fname = new_file
+    if not new_file:
+        base = x_col + "-" + "-".join(y_cols)
+        base += "-" + "-".join(cat_cols) if cat_cols else "-ycols"
+        base += ".std" if use_std else ""
+        fname = base + ".pdf"
+
     if Path(fname).is_file():
-        shutil.move(fname, fname + now + ".pdf")
-    plt.savefig(fname, bbox_inches='tight')
-    open_pdf(fname)
+        shutil.move(fname, fname + ".bak")
+    # plt.savefig(fname, bbox_inches='tight')
+    add_open_pdf(fname)
 
-def line_plot(df, selected_cols, measure_cols, x_label, y_label='Accuracy'):
-    matplotlib.rcParams.update({
-        'font.size': 12,
-        'figure.dpi': 300,
-        'axes.titlesize': 14,
-        'axes.labelsize': 12,
-        'lines.linewidth': 2,
-        'legend.fontsize': 10,
-        'grid.alpha': 0.4,
-    })
+def bar_plot(df, x_col, y_cols, cat_cols, x_label,
+             y_labels=['Value'], use_std=False, new_file=False, normalize=False):
 
-    col = selected_cols[0]
-    measure = measure_cols[0]
+    if isinstance(cat_cols, str):
+        cat_cols = [cat_cols]
+    if isinstance(y_cols, str):
+        y_cols = [y_cols]
+    if not cat_cols or cat_cols == [None]:
+        cat_cols = []
 
-    summary2 = df.groupby(col)[measure].agg(['mean', 'std']).reset_index()
+    df = df.copy()
 
-    plt.figure(figsize=(8, 5))
+    if cat_cols:
+        df['group'] = df[cat_cols].astype(str).agg('_'.join, axis=1)
+    else:
+        df['group'] = ''
 
-    # Plot mean and error bars
-    plt.plot(summary2[col], summary2['mean'], '-o', label='Mean', color='green')
-    plt.errorbar(summary2[col], summary2['mean'], yerr=summary2['std'], fmt='o', capsize=5, 
-                 ecolor='black', label='Std Dev')
+    df = df.sort_values(x_col)
 
-    # Use larger font sizes for publication-quality output
-    plt.xlabel(x_label) #, fontsize=18, fontweight='bold')
-    plt.ylabel(y_label) # + ' ', fontsize=18, fontweight='bold')
-    plt.xticks(summary2[col]) #, fontsize=16)
-    #plt.yticks(fontsize=16)
-    plt.grid(True)
-    #plt.legend(fontsize=16)
+    if normalize:
+        for y in y_cols:
+            y_min, y_max = df[y].min(), df[y].max()
+            df[f"{y}_norm"] = (df[y] - y_min) / (y_max - y_min + 1e-8)
+
+    colors = ['blue', 'green', 'orange', 'black', 'red', 'magenta', 'teal', 'brown']
+    width = 0.8 / len(df['group'].unique())  # dynamic bar width
+    x_ticks = df[x_col].unique()
+
+    plt.figure(figsize=(12, 6))
+
+    for j, y_col in enumerate(y_cols):
+        plot_col = f"{y_col}_norm" if normalize else y_col
+        groups = df['group'].unique()
+
+        for i, group in enumerate(groups):
+            filtered = df[df['group'] == group]
+
+            # Ensure alignment on x-axis
+            x_vals = filtered[x_col].values
+            y_vals = filtered[plot_col].values
+            x_positions = [x + i * width for x in range(len(x_vals))]
+
+            label = y_labels[j] if not cat_cols else group
+
+            if use_std:
+                std_vals = filtered.groupby(x_col)[plot_col].std().reindex(x_vals).values
+                plt.bar(x_positions, y_vals, width=width,
+                        yerr=std_vals, capsize=5,
+                        color=colors[i % len(colors)],
+                        label=label)
+            else:
+                plt.bar(x_positions, y_vals, width=width,
+                        color=colors[i % len(colors)],
+                        label=label)
+
+        # Reset x-ticks for each y_col loop if needed
+        plt.xticks([r + width * (len(groups)-1)/2 for r in range(len(x_vals))], x_ticks)
+
+    plt.ylim(70, 80)
+    plt.xlabel(x_label, fontweight='bold')
+    y_label = y_labels[0] if len(y_labels) == 1 else ""
+    plt.ylabel(y_label, fontweight='bold')
+    plt.legend()
+    plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    tehran = timezone('Asia/Tehran')
-    now = datetime.now(tehran)
-    now = now.strftime("%m-%d-%H-%M-%S")  # Adds seconds
-    fname = col + "-" + measure + ".pdf"
-    if Path(fname).is_file():
-        shutil.move(fname, fname + now + ".pdf")
-    plt.savefig(fname, bbox_inches='tight')
-    open_pdf(fname)
 
+    fname = new_file
+    if not new_file:
+        base = "bar-" + x_col + "-" + "-".join(y_cols)
+        base += "-" + "-".join(cat_cols) if cat_cols else "-ycols"
+        base += ".std" if use_std else ""
+        fname = base + ".pdf"
+
+    if Path(fname).is_file():
+        shutil.move(fname, fname + ".bak")
+
+    # plt.savefig(fname, bbox_inches='tight')
+    add_open_pdf(fname)
 
 def compare(df, dim_cols, measure_cols, cat_cols):
     matplotlib.rcParams.update({

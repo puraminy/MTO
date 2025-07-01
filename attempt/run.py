@@ -311,7 +311,7 @@ def task_similarity(dif_ij, final_i, final_j, alpha=1.0):
 
     return similarity
 
-def get_prompts_sim(prompt_encoders, target_embs, model):
+def get_prompts_sim(prompt_encoders, target_embs, model, weights):
     source_embs = {}
     private_embs = {}
 
@@ -332,13 +332,23 @@ def get_prompts_sim(prompt_encoders, target_embs, model):
     sim_matrix = torch.zeros(len(target_embs_list), len(source_names))
 
     # Step 3: Fill sim_matrix for all source prompts (including private)
+    sum_src = {}
+    sum_pvt = {}
     for i, t in enumerate(target_embs_list):
         for j, sname in enumerate(source_names):
             s = source_embs[sname]
             sim = F.cosine_similarity(t.unsqueeze(0), s.unsqueeze(0)).item()
             sim_matrix[i, j] = sim
+            ws = weights[i, j] * sim
+            if "_for_" in sname:
+                sum_pvt[i] = sum_pvt.get(i, 0) + ws
+            else:
+                sum_src[i] = sum_src.get(i, 0) + ws
+    weighted_avg_sim_source = round((sum(sum_src.values()) / len(target_embs_list)).item(), 2)
+    weighted_avg_sim_private = 0
+    if sum_pvt:
+        weighted_avg_sim_private = round((sum(sum_pvt.values()) / len(target_embs_list)).item(), 2)
 
-    # Step 4: Compute average similarities
     def average_sim(targets, prompts):
         if not prompts:
             return None
@@ -354,7 +364,8 @@ def get_prompts_sim(prompt_encoders, target_embs, model):
     avg_sim_source = average_sim(target_embs_list, non_private_source_embs)
     avg_sim_private = average_sim(target_embs_list, private_embs)
 
-    return sim_matrix, source_names, avg_sim_source, avg_sim_private
+    return (sim_matrix, source_names, avg_sim_source, 
+            avg_sim_private, weighted_avg_sim_source, weighted_avg_sim_private)
 
 def get_task_sim2(target_embs, model):
     target_embs = [e.squeeze(0).mean(dim=0) for k, e in target_embs.items()]
@@ -1177,7 +1188,7 @@ def run(ctx, cfg_pat, experiment, exp_conf, break_point, preview, exp_vars,
            var_name = var_name.strip("^")
            args[var_name]=var_item
            if var_name in main_vars:
-               mvars[var_name] = var_item
+               mvars[var_name] = strval(var_item)
            if not var_name in exclude_list:
                _output_dir.append(var_name + "_" + str(var_item))
            prev_name = var_name
@@ -1652,7 +1663,7 @@ def train(**kwargs):
         train_prefix[tname] = [tname]
         test_prefix[tname] = test_prefix_list 
 
-    cross_prefix = kwargs.get("cross_prefix", None)
+    cross_prefix = main_vars.get("cross_prefix", None)
     if cross_prefix:
         ctasks = cross_prefix
         if cross_prefix == "all": 
@@ -1687,7 +1698,7 @@ def train(**kwargs):
     nsp = 0
     inp_nsp = kwargs.setdefault("num_source_prompts", nsp) 
     source_per_task = kwargs.setdefault("source_per_task", False) 
-    if prompts_conf and "SI" in prompts_conf and not data_args.source_prompts:
+    if (prompts_conf and ("SI" in prompts_conf or "N" in prompts_conf)) and not data_args.source_prompts:
         source_per_task = True
         inp_nsp = 0
         kwargs["num_source_prompts"] = 0
@@ -1769,10 +1780,14 @@ def train(**kwargs):
     if not "input_class" in main_vars:
         input_class = "default"
     task_args["input_class"] = input_class
-    task_args["map_labels"] = kwargs.setdefault("map_labels", True)
     task_args["samples_per_head"] = kwargs.setdefault("samples_per_head", 3)
-    task_args["start_row"] = kwargs.setdefault("start_row", 0)
-    task_args["mapping"] = kwargs.setdefault("mapping", "map")
+    task_args["start_row"] = main_vars.get("start_row", 0)
+    label_mapping = kwargs.setdefault("mapping", "map")
+    task_args["mapping"] = label_mapping
+    map_labels = kwargs.setdefault("map_labels", True)
+    if label_mapping == "binary" or label_mapping == "bin":
+        map_labels = False
+    task_args["map_labels"] = map_labels 
     task_args["use_cache_file"] = kwargs.setdefault("use_cache_file", True)
     task_args["use_config"] = kwargs.setdefault("use_config", True)
     task_args["equal_labels"] = kwargs.setdefault("equal_labels", True)
@@ -1832,7 +1847,7 @@ def train(**kwargs):
         training_args.num_train_epochs = num_epochs
         kwargs["num_train_epochs"] = num_epochs
         
-    if kwargs.get("adjust_norm_method", True): 
+    if main_vars.get("adjust_norm_method", False): 
         norm_method = kwargs.get("norm_method","after_sigmoid")
         ts = kwargs.get("target_share", None)
         n = max(1, num_source_prompts) 
@@ -1898,7 +1913,8 @@ def train(**kwargs):
     else:
         exp_info["multi_single"] = "single"
 
-    exp_info["num_tasks"] = num_tasks = len(tasks)
+    num_tasks = len(tasks)
+    exp_info["num_tasks"] = num_tasks 
     wandb_dir = kwargs.save_path #op.join("logs", experiment)
     Path(wandb_dir).mkdir(parents=True, exist_ok=True)
     experiment = kwargs.experiment
@@ -2066,6 +2082,7 @@ def train(**kwargs):
     config.select_method = model_args.select_method #my option
     config.target_share_temperature = model_args.target_share_temperature
     config.anneal_min = model_args.anneal_min # my option
+    config.pass_task_ids = main_vars.get("pass_task_ids", False)
     config.anneal_type = model_args.anneal_type # my option
     config.anneal_dir = model_args.anneal_dir # my option
     config.anneal_rate = anneal_rate # my option
@@ -2343,6 +2360,9 @@ def train(**kwargs):
         prompt_hidden_size = kwargs.get("hidden_size", -1)
         prompt_non_linear = kwargs.get("non_linear", "gelu")
         prompt_out_dim = kwargs.get("out_dim", -1)
+        prompt_in_dim = kwargs.get("in_dim", -1)
+        task_emb_dim = kwargs.get("task_emb_dim", 50)
+        task_compose_method = kwargs.get("task_compose_method", 'add')
         exp_info["num_layers"] = prompt_num_layers
         exp_info["hidden_size"] = prompt_hidden_size
         for prompt in source_prompts: 
@@ -2350,7 +2370,7 @@ def train(**kwargs):
             encoder_type = adapter_args.prompt_encoder_type
             prompt_length = source_prompt_length
             if "_for" in encoder_name:
-                encoder_type = kwargs.get("private_prompt_encoder_type", encoder_type)
+                encoder_type = main_vars.get("private_prompt_encoder_type", encoder_type)
                 prompt_length = private_prompt_length
             encoder, enc_type = create_encoder(encoder_name, model, tokenizer, 
                     prompt_tokens=[],
@@ -2358,6 +2378,10 @@ def train(**kwargs):
                     hidden_size = prompt_hidden_size,
                     num_layers = prompt_num_layers,
                     is_source = True,
+                    num_tasks = num_tasks,
+                    task_emb_dim=task_emb_dim,
+                    task_compose_method=task_compose_method,
+                    in_dim = prompt_in_dim,
                     out_dim = prompt_out_dim,
                     length = prompt_length, 
                     encoder_type = encoder_type,
@@ -2378,7 +2402,8 @@ def train(**kwargs):
                         load_prompt = True
                 elif encoder.is_source:
                     load_prompt = True
-                    if "_com" in encoder.name and not reval:
+                    if ("_com" in encoder.name and not reval 
+                            and not "prompts_prefix" in main_vars):
                         #pattern = re.compile(r"com\d+")
                         #enc_name = re.sub(pattern, "com", encoder.name)
                         encoder_name = encoder.name.replace("source_", "")
@@ -2435,7 +2460,10 @@ def train(**kwargs):
                     non_linear = prompt_non_linear,
                     hidden_size = prompt_hidden_size,
                     num_layers = prompt_num_layers,
-                    in_dim = prompt_out_dim,
+                    in_dim = prompt_in_dim,
+                    num_tasks = num_tasks,
+                    task_emb_dim=task_emb_dim,
+                    task_compose_method=task_compose_method,
                     out_dim = -1,
                     encoder_type=encoder_type, 
                     shared_mat= shared_mat) 
@@ -2565,7 +2593,7 @@ def train(**kwargs):
                 continue
             elif encoder.is_source:
                 mylogs.bp("learn")
-                if learn_source_prompts or "com" in encoder.name:
+                if learn_source_prompts: # or "com" in encoder.name:
                     if encoder.is_private and not learn_private_prompts:
                         continue
                     if encoder.is_loaded and not learn_loaded_prompts:
@@ -2853,7 +2881,7 @@ def train(**kwargs):
     attn_learning_rate = model_args.attn_learning_rate
 
     n = max(1, num_source_prompts)
-    if cross_pt and kwargs.get("adjust_alr", True):
+    if cross_pt and main_vars.get("adjust_alr", False):
         scale = 1 / math.sqrt(n)
         attn_learning_rate *= scale
         attn_learning_rate = max(attn_learning_rate, 0.01)
@@ -2866,10 +2894,8 @@ def train(**kwargs):
     if model_args.attn_learning_rate is not None and model_args.learn_attention:
         if attn_pt is not None:
             for name, param in attn_pt.named_parameters():
-               if name == "target_router" in name: 
+               if "target_router" in name or "key_proj" in name or "query_proj" in name: 
                   gate_params.append(param)
-               elif name == "router" or "proj" in name: 
-                  attn_params.append(param)
         for name, param in model.named_parameters():
             if (name == "encoder.attn_W_up.weight" 
                 or name == "encoder.attn_W_down.weight" 
@@ -2898,7 +2924,7 @@ def train(**kwargs):
         source_prompt_learning_rate = prompt_learning_rate 
 
     n = max(1, num_source_prompts)
-    if kwargs.get("adjust_slr", True):
+    if main_vars.get("adjust_slr", False):
         base_slr = kwargs.get("base_slr", 0.05)
         current_slr = source_prompt_learning_rate
         cap = kwargs.get("slr_cap", 0.15)
@@ -2914,7 +2940,7 @@ def train(**kwargs):
         source_prompt_learning_rate = min(max(adjusted_slr, current_slr), cap)
         kwargs["source_prompt_learning_rate"] = round(source_prompt_learning_rate,3)
 
-    adjust_plr = kwargs.get("adjust_plr", True)
+    adjust_plr = main_vars.get("adjust_plr", False)
     if cross_pt and adjust_plr: 
         if adjust_plr == "asc":
             scale = (1 + math.log(n))
@@ -3189,7 +3215,7 @@ def train(**kwargs):
         #    load_model(best_chk_path, lsp)
 
         # Save prompts
-        if method == "pt":
+        if method == "pt" or cross_pt:
             #if not cross_pt: 
             #    prompts_prefix = "pt_" + prompts_prefix 
             #else: 
@@ -3197,10 +3223,17 @@ def train(**kwargs):
             #prompts_prefix = prompts_prefix.strip("_")
             mylogs.bp("save_prompts")
             prompts_to_save = kwargs.setdefault("prompts_to_save", None) 
-            save_all_prompts = kwargs.setdefault("save_all_prompts",False ) 
+            save_all_prompts = False
+            if "save_all_prompts" in main_vars:
+                save_all_prompts = kwargs.setdefault("save_all_prompts",False ) 
             save_to_prompts_dir = kwargs.get("save_to_prompts_dir", False) 
-            ssp = kwargs.setdefault("save_source_prompts", save_all_prompts) 
-            opp = kwargs.setdefault("output_prompts_prefix", prompts_prefix) 
+            ssp = kwargs.setdefault("save_source_prompts", 
+                    save_all_prompts or save_to_prompts_dir) 
+            spp = kwargs.setdefault("save_private_prompts", save_all_prompts) 
+            stp = kwargs.setdefault("save_target_prompts", save_all_prompts) 
+            opp = prompts_prefix
+            if "output_prompts_prefix" in main_vars:
+                opp = kwargs.setdefault("output_prompts_prefix", prompts_prefix) 
             if opp is None:
                 opp = str(training_args.num_train_epochs) + \
                     str(data_args.max_train_samples)
@@ -3210,6 +3243,8 @@ def train(**kwargs):
                 attn_pt.store_encoders(output_dir = training_args.output_dir,
                                  prompts_and_router_only=cross_pt, 
                                  save_source_prompts = ssp, 
+                                 save_private_prompts = spp, 
+                                 save_target_prompts = True,
                                  prompts_to_save = prompts_to_save, 
                                  save_router=True,
                                  prefix=str(opp),
@@ -3223,6 +3258,8 @@ def train(**kwargs):
                         prompts_and_router_only=cross_pt, 
                         prompts_to_save = prompts_to_save or "all", 
                         save_source_prompts = ssp,
+                        save_private_prompts = spp, 
+                        save_target_prompts = stp, 
                         save_router = save_router,
                         prefix=str(opp),
                         router_prefix=router_prefix)
@@ -3568,7 +3605,7 @@ def train(**kwargs):
                     test_dataset=test_dataset,
                     #max_length=10, #data_args.test_max_target_length, 
                     metric_key_prefix="test", 
-                 #   task=task
+                    task_id=auto_task.task_index
                 )
             predicted_token_ids = predictions
             if task_type == "SEQ_CLS" and False:
@@ -4175,17 +4212,22 @@ def train(**kwargs):
                             source_names = [e.name for e in prompt_encoders]
                             psim = tsim = torch.zeros(len(embs), len(source_names))
                             if all(e is not None for e in embs):
-                                psim, p_labels, avg_sim_src, avg_sim_pvt = get_prompts_sim(
-                                        prompt_encoders, 
-                                        target_embs = task_tuned_prompts,  
-                                        model=model.nested_model)
+                                psim, p_labels, sim_src, sim_pvt, wsim_src, wsim_pvt = \
+                                        get_prompts_sim(
+                                            prompt_encoders, 
+                                            target_embs = task_tuned_prompts,  
+                                            model=model.nested_model,
+                                            weights=scores_matrix)
                                 tsim  = get_task_sim(target_embs = task_tuned_prompts,  
                                         model=model.nested_model, normalize = True)
                                 visualize_prompts_pca(task_tuned_prompts, folder=eval_folder)
                                 if mask is None:
                                     for task, df in dfs.items():
-                                        df["sim_src"] = avg_sim_src
-                                        df["sim_pvt"] = avg_sim_pvt
+                                        df["sim_src"] = sim_src
+                                        df["wsim_src"] = wsim_src
+                                        df["sim_pvt"] = sim_pvt
+                                        df["wsim_pvt"] = wsim_pvt
+
                             #visualize_prompts_tsne(task_tuned_prompts, folder=eval_folder)
                             #visualize_prompts_umap(task_tuned_prompts, folder=eval_folder)
                             if cross_pt:

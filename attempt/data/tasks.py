@@ -150,7 +150,9 @@ class AbstractTask(abc.ABC):
         self.data_path = task_args.data_path
         self.seed = task_args.data_seed
         self.template = task_args.template
-        self.start_row = task_args.get("start_row", 0)
+        start_row = task_args.get("start_row", 0)
+        if start_row > 0:
+            self.start_row = start_row
         self.tokenizer = tokenizer
         self.task_index = task_index
         self.omit = task_args.get("omit_part",self.omit)
@@ -235,11 +237,12 @@ class AbstractTask(abc.ABC):
     def shuffled_indices(self, dataset):
         if not self.do_shuffle:
             num_samples = len(dataset)
-            return range(num_samples)
-        num_samples = len(dataset)
+            return range(self.start_row, num_samples)
+        num_samples = len(dataset) - self.start_row
         generator = torch.Generator()
         generator.manual_seed(self.seed)
-        return torch.randperm(num_samples, generator=generator).tolist()
+        ret = torch.randperm(num_samples, generator=generator).tolist() 
+        return [i+self.start_row for i in ret]
 
     def sample_equally_from_labels(self, dataset, n_obs):
         # Step 1: Count label distribution in the dataset
@@ -298,6 +301,7 @@ class AbstractTask(abc.ABC):
         num_samples = len(dataset)
         n_obs = self.check_n_obs(n_obs, num_samples)
         mylogs.bp("filter")
+        self.start_row = min(self.start_row, num_samples - n_obs)
         if self.equal_labels and n_obs < 1000:
             ds = self.sample_equally_from_labels(dataset, n_obs)
             return ds
@@ -350,6 +354,7 @@ class AbstractTask(abc.ABC):
         if self.equal_labels and split != "test":
             fname += "_eq"
         obs_str = str(n_obs) if n_obs is not None and n_obs > 0 else "all"
+        obs_str += "_" + str(self.start_row)
         if split == "train":
             if obs_str != "all":
                 outfile = os.path.join(directory,
@@ -2343,6 +2348,38 @@ class CommonGen(AbstractTask):
         tgt_texts = [example['target']]
         return self.seq2seq_format(src_texts, tgt_texts, prefix)
 
+class SICK(AbstractTask):
+    name = "sick"
+    use_gen_map = True
+    labels_list = ["neutral", "entailment", "contradiction"]
+    metric = [metrics.accuracy, metrics.f1_score_with_invalid]
+    metric_names = ["accuracy", "f1"]
+    labels_map = {
+        "map": {
+            "entailment": "entailment",
+            "neutral": "neutral",
+            "contradiction": "contradiction"
+        },
+        "yn": {
+            "entailment": "yes",
+            "neutral": "maybe",
+            "contradiction": "no"
+        }
+    }
+    split_to_data_split = {
+        "train": "train",
+        "validation": "validation",
+        "test": "test"  # Some versions of SICK have a test split
+    }
+
+    def load_dataset(self, split):
+        return datasets.load_dataset('sick', split=split)
+
+    def preprocessor(self, example, prefix):
+        src_texts = ["premise:", example['sentence_A'],
+                     "hypothesis:", example['sentence_B']]
+        tgt_texts = [str(example['label'])]
+        return self.seq2seq_format(src_texts, tgt_texts, prefix)
 
 class QQP(AbstractTask):
     name = "qqp"
@@ -2569,7 +2606,7 @@ class QNLI(AbstractTask):
         return datasets.load_dataset('glue', 'qnli', split=split)
 
     def preprocessor(self, example, prefix):
-        if self.input_class == "nli":
+        if True: #self.input_class == "nli":
             src_texts = ["hypothesis:", example['question'][:100],
                          "premise:", example["sentence"][:350]]
         else:
@@ -2581,6 +2618,7 @@ class QNLI(AbstractTask):
 
 class QNLI1(QNLI):
     name = "qnli1"
+    ds_name = "qnli"
     split_folder = {"train": "qnli", "test":"qnli"}
     labels_map = {
             "map": {"0":"entailment","1":"not_entailment"},
@@ -2591,13 +2629,16 @@ class QNLI1(QNLI):
 
 class QNLI2(QNLI):
     name = "qnli2"
+    ds_name = "qnli"
+    start_row = 100
     split_folder = {"train": "qnli", "test":"qnli"}
     labels_map = {
-            "map": {"0":"entailment","1":"not_entailment"},
-            "map2": {"0":"not_duplicate","1":"duplicate"},
-            "map4": {"0":"equivalent","1":"not_equivalent"}
+            "map":{"0":"entailment", "1":"not_entailment"},
+            "map2":{"0":"follow", "1":"not_follow"},
+            "map3": {"0":"not_duplicate","1":"duplicate"},
+            "map4": {"0":"equivalent","1":"not_equivalent"},
+            "follow":{"0":"follow", "1":"not_follow"}
         }
-
 
 class RTE(AbstractTask):
     name = "rte"
@@ -2610,7 +2651,8 @@ class RTE(AbstractTask):
                            "test": "validation"}
     labels_map = {
             "map": {"0":"entailment", "1":"not_entailment"},
-             "yn":{"0":"yes", "1":"no"}
+             "yn":{"0":"yes", "1":"no"},
+            # "follow":{"0":"follows", "1":"not_follows"}
             # "map2":{"0":"not_duplicate", "1":"duplicate"}
         } # entailment nont_entailment
     # labels_map = {"map":{"0":"C", "1":"D"} # entailment nont_entailment
@@ -2986,6 +3028,7 @@ TASK_MAPPING = OrderedDict(
         ('qnli', QNLI),
         ('qnli1', QNLI1),
         ('qnli2', QNLI2),
+        ('sick', SICK),
         ('rte', RTE),
         ('rte1', RTE1),
         ('rte2', RTE2),
