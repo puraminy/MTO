@@ -1868,7 +1868,7 @@ def train(**kwargs):
     tag = kwargs.setdefault("tag",[]) # the selected tags
     full_tag = kwargs.setdefault("full_tag",[]) # the full list of tags
     # check conflicts of options
-    check_cfls = kwargs.setdefault("check_conflicts",True)
+    check_cfls = kwargs.setdefault("check_conflicts",False)
     if check_cfls: #check conflicts
         resolved, msg = check_conflicts(model_args, data_args, 
                 training_args, adapter_args, kwargs)

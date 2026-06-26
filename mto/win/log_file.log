@@ -1,0 +1,99 @@
+INFO:root:========================= Starting program at 2025-10-26 20:52:10.138034
+INFO:root:========================= Starting program at 23, 98
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+CRITICAL:root:
+Date:2025-10-26 20:52:12.191758
+Traceback (most recent call last):
+  File "/home/ahmad/.local/bin/nodcast", line 33, in <module>
+    sys.exit(load_entry_point('nodcast', 'console_scripts', 'nodcast')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 5492, in main
+    wrapper(start)
+  File "/usr/lib/python3.12/curses/__init__.py", line 94, in wrapper
+    return func(stdscr, *args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 4384, in start
+    ch, menu, mi = show_menu(menu, options, shortkeys=shortkeys, mi=mi, subwins=subwins, title=main_title,
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 4142, in show_menu
+    si, canceled, st = open_submenu(sub_menu_win, options, sel, si, title)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: open_submenu() missing 1 required positional argument: 'std'
+INFO:root:========================= Starting program at 2025-10-26 20:59:16.336563
+INFO:root:========================= Starting program at 23, 98
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Article:The Thirty-Fourth AAAI Conference on Artiﬁcial Intelligence (AAAI-20)
+CRITICAL:root:
+Date:2025-10-26 20:59:23.604962
+Traceback (most recent call last):
+  File "/home/ahmad/.local/bin/nodcast", line 33, in <module>
+    sys.exit(load_entry_point('nodcast', 'console_scripts', 'nodcast')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 5492, in main
+    wrapper(start)
+  File "/usr/lib/python3.12/curses/__init__.py", line 94, in wrapper
+    return func(stdscr, *args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 4473, in start
+    show_files(save_folder, exts=['*.txt', '*.artid', "*.listid", '*.art','*.pdf','*.list','*.json','*.squad','*.prc'], extract=True)
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 4796, in show_files
+    show_article(art, collect_art=collect_art)
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 1982, in show_article
+    print_prog(text_win, total_prog, width)
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 1234, in print_prog
+    cur.init_pair(TEMP_COLOR2, back_color, d_color % cur.COLORS)
+TypeError: 'NoneType' object cannot be interpreted as an integer
+INFO:root:========================= Starting program at 2025-10-26 21:00:37.102017
+INFO:root:========================= Starting program at 23, 98
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Refreshing ...
+INFO:root:Article:The Thirty-Fourth AAAI Conference on Artiﬁcial Intelligence (AAAI-20)
+CRITICAL:root:
+Date:2025-10-26 21:01:01.703152
+Traceback (most recent call last):
+  File "/home/ahmad/.local/bin/nodcast", line 33, in <module>
+    sys.exit(load_entry_point('nodcast', 'console_scripts', 'nodcast')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 5493, in main
+    wrapper(start)
+  File "/usr/lib/python3.12/curses/__init__.py", line 94, in wrapper
+    return func(stdscr, *args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 4474, in start
+    show_files(save_folder, exts=['*.txt', '*.artid', "*.listid", '*.art','*.pdf','*.list','*.json','*.squad','*.prc'], extract=True)
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 4797, in show_files
+    show_article(art, collect_art=collect_art)
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 1983, in show_article
+    print_prog(text_win, total_prog, width)
+  File "/home/ahmad/nodcast/nodcast/nodcast.py", line 1235, in print_prog
+    cur.init_pair(TEMP_COLOR2, back_color, d_color % cur.COLORS)
+    ^^^
+  File "/usr/lib/python3.12/bdb.py", line 90, in trace_dispatch
+    return self.dispatch_line(frame)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/bdb.py", line 115, in dispatch_line
+    if self.quitting: raise BdbQuit
+                      ^^^^^^^^^^^^^
+bdb.BdbQuit
